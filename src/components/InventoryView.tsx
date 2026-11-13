@@ -262,28 +262,33 @@ export function InventoryView({
 
         <div className="inventory-spool-grid">
           {spools.map((sp) => {
+            const initialWeight = sp.initial_weight_g || 1000;
+            const remainingWeight = sp.remaining_weight_g ?? 0;
             const pct = Math.min(
               100,
-              Math.max(0, (sp.remaining_weight_g / (sp.initial_weight_g || 1000)) * 100)
+              Math.max(0, (remainingWeight / initialWeight) * 100)
             );
-            const isLow = sp.remaining_weight_g < 300;
-            const isCritical = sp.remaining_weight_g < 150;
-            const pricePerGram = (sp.spool_price / (sp.initial_weight_g || 1000)).toFixed(4);
+            const roundPct = Math.round(pct);
+            const pricePerGram = (sp.spool_price / initialWeight).toFixed(4);
+
+            // Dynamic progress bar color: vibrant emerald >= 30%, amber < 30%, red < 15%
+            const progressColor =
+              pct < 15 ? '#ef4444' : pct < 30 ? '#f59e0b' : '#10b981';
 
             return (
               <div key={sp.id} className="spool-card">
+                {/* Top Row: Swatch, Code, Subtitle, and Actions */}
                 <div className="spool-card-top">
                   <div className="spool-ident">
                     <span
                       className="spool-swatch"
                       style={{ backgroundColor: sp.color_hex }}
                     />
-                    <div>
+                    <div className="spool-title-block">
                       <span className="spool-code">{sp.code}</span>
-                      <h4 className="spool-name">
-                        {sp.brand} {sp.material}
-                      </h4>
-                      <span className="spool-color-text">{sp.color_name}</span>
+                      <span className="spool-name">
+                        {sp.brand} · {sp.material}
+                      </span>
                     </div>
                   </div>
                   <div className="spool-actions">
@@ -293,11 +298,11 @@ export function InventoryView({
                       title="Edit spool / adjust grams"
                       onClick={() => openEditModal(sp)}
                     >
-                      <Edit2 size={14} />
+                      <Edit2 size={15} />
                     </button>
                     <button
                       type="button"
-                      className="btn-icon-subtle text-danger"
+                      className="btn-icon-subtle btn-delete"
                       title="Delete spool"
                       onClick={() => {
                         if (confirm(`Delete spool ${sp.code} (${sp.color_name})?`)) {
@@ -305,28 +310,38 @@ export function InventoryView({
                         }
                       }}
                     >
-                      <Trash2 size={14} />
+                      <Trash2 size={15} />
                     </button>
                   </div>
                 </div>
 
-                <div className="spool-weight-row">
-                  <span className="spool-weight-val">
-                    {sp.remaining_weight_g} <small>g left</small>
-                  </span>
-                  <span className="spool-price-rate">
-                    {currencySymbol}
-                    {pricePerGram}/g
+                {/* Middle Row: Color Name & Unit Cost Badge */}
+                <div className="spool-card-mid">
+                  <span className="spool-color-badge">{sp.color_name}</span>
+                  <span className="spool-rate-badge">
+                    {currencySymbol}{pricePerGram}/g
                   </span>
                 </div>
 
-                <div className="spool-progress-track">
-                  <div
-                    className={`spool-progress-bar ${
-                      isCritical ? 'is-critical' : isLow ? 'is-low' : ''
-                    }`}
-                    style={{ width: `${pct}%` }}
-                  />
+                {/* Bottom Row: Weight Stats & Visible Progress Bar */}
+                <div className="spool-card-bottom">
+                  <div className="spool-weight-row">
+                    <span className="spool-weight-label">
+                      <strong>{remainingWeight}</strong> / {initialWeight} g
+                    </span>
+                    <span className="spool-weight-pct font-mono">
+                      {roundPct}%
+                    </span>
+                  </div>
+                  <div className="spool-progress-track">
+                    <div
+                      className="spool-progress-bar"
+                      style={{
+                        width: `${pct}%`,
+                        backgroundColor: progressColor,
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
             );
@@ -361,22 +376,33 @@ export function InventoryView({
 
         {history.length === 0 ? (
           <div className="history-empty-state">
-            <Archive size={32} className="text-muted" />
-            <p>No print jobs or sales logged yet.</p>
+            <Archive size={36} className="text-muted" />
+            <p className="history-empty-title">No print jobs or sales logged yet.</p>
             <span className="field-hint">
               Calculate a print in the Calculator tab and click &ldquo;Log Print / Sale&rdquo; to record it.
             </span>
           </div>
         ) : (
-          <div className="breakdown-table-wrap">
-            <table className="breakdown-table">
+          <div className="history-table-container">
+            <table className="history-table">
+              <colgroup>
+                <col style={{ width: '110px' }} />
+                <col />
+                <col style={{ width: '110px' }} />
+                <col style={{ width: '100px' }} />
+                <col style={{ width: '115px' }} />
+                <col style={{ width: '95px' }} />
+                <col style={{ width: '95px' }} />
+                <col style={{ width: '95px' }} />
+                <col style={{ width: '52px' }} />
+              </colgroup>
               <thead>
                 <tr>
                   <th>Date</th>
                   <th>Project Name</th>
                   <th>Spool</th>
                   <th className="num">Grams</th>
-                  <th>Channel</th>
+                  <th className="col-center">Channel</th>
                   <th className="num">Cost</th>
                   <th className="num">Revenue</th>
                   <th className="num">Profit</th>
@@ -394,7 +420,7 @@ export function InventoryView({
                     <tr key={h.id}>
                       <td className="text-muted">{dateStr}</td>
                       <td>
-                        <strong>{h.project_name}</strong>
+                        <div className="history-project-name">{h.project_name}</div>
                         {h.notes && (
                           <div className="table-subnote">{h.notes}</div>
                         )}
@@ -405,11 +431,11 @@ export function InventoryView({
                             className="table-dot"
                             style={{ backgroundColor: h.spool_color_hex || '#888' }}
                           />
-                          {h.spool_code || h.spool_id}
+                          <span>{h.spool_code || h.spool_id}</span>
                         </span>
                       </td>
                       <td className="num font-mono">{h.grams_used}g</td>
-                      <td>
+                      <td className="col-center">
                         <span className={`channel-pill channel-${(h.sales_channel || 'direct').toLowerCase()}`}>
                           {h.sales_channel}
                         </span>
@@ -432,7 +458,7 @@ export function InventoryView({
                       <td className="num">
                         <button
                           type="button"
-                          className="btn-trash-row"
+                          className="btn-icon-subtle btn-delete"
                           title="Delete history record"
                           onClick={() => {
                             if (confirm('Delete this history record? (Filament will not be returned automatically)')) {
@@ -440,7 +466,7 @@ export function InventoryView({
                             }
                           }}
                         >
-                          <Trash2 size={13} />
+                          <Trash2 size={14} />
                         </button>
                       </td>
                     </tr>
