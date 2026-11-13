@@ -444,7 +444,7 @@ export function InventoryView({
       </div>
 
       {/* Spool Inventory Section */}
-      <div className="calc-card">
+      <div className="calc-card inventory-section-card">
         <div className="calc-card-header">
           <div className="calc-card-title-wrap">
             <span className="step-icon-badge">
@@ -584,22 +584,22 @@ export function InventoryView({
           </div>
         ) : (
           <div className="history-table-container">
-            <table className="history-table">
+            <table className="history-table expenses-table">
               <colgroup>
-                <col style={{ width: '105px' }} />
+                <col style={{ width: '125px' }} />
                 <col />
                 <col style={{ width: '140px' }} />
-                <col style={{ width: '130px' }} />
+                <col style={{ width: '145px' }} />
                 <col style={{ width: '90px' }} />
                 <col style={{ width: '100px' }} />
                 <col style={{ width: '50px' }} />
               </colgroup>
               <thead>
                 <tr>
-                  <th>Date</th>
+                  <th style={{ width: '125px' }} className="table-cell-nowrap">Date</th>
                   <th>Concept</th>
-                  <th>Supplier</th>
-                  <th>Category</th>
+                  <th style={{ width: '140px' }}>Supplier</th>
+                  <th style={{ width: '145px' }} className="table-cell-nowrap">Category</th>
                   <th className="col-center">Type</th>
                   <th className="num">Amount</th>
                   <th />
@@ -608,7 +608,7 @@ export function InventoryView({
               <tbody>
                 {expenses.map((exp) => (
                   <tr key={exp.id}>
-                    <td className="text-muted font-mono">{exp.date}</td>
+                    <td className="text-muted font-mono table-cell-nowrap">{exp.date}</td>
                     <td>
                       <div className="history-project-name">{exp.concept}</div>
                       {exp.notes && (
@@ -616,7 +616,7 @@ export function InventoryView({
                       )}
                     </td>
                     <td>{exp.supplier}</td>
-                    <td className="text-muted">{exp.category}</td>
+                    <td className="text-muted table-cell-nowrap">{exp.category}</td>
                     <td className="col-center">
                       <span
                         className={`expense-type-badge badge-${exp.expense_type.toLowerCase()}`}
@@ -624,7 +624,7 @@ export function InventoryView({
                         {exp.expense_type}
                       </span>
                     </td>
-                    <td className="num font-mono font-semibold">
+                    <td className="num font-mono font-semibold table-cell-nowrap">
                       {currencySymbol}{exp.amount_eur.toFixed(2)}
                     </td>
                     <td className="num">
@@ -682,7 +682,7 @@ export function InventoryView({
           <div className="history-table-container">
             <table className="history-table">
               <colgroup>
-                <col style={{ width: '110px' }} />
+                <col style={{ width: '125px' }} />
                 <col />
                 <col style={{ width: '130px' }} />
                 <col style={{ width: '90px' }} />
@@ -694,9 +694,9 @@ export function InventoryView({
               </colgroup>
               <thead>
                 <tr>
-                  <th>Date</th>
+                  <th style={{ width: '125px' }} className="table-cell-nowrap">Date</th>
                   <th>Project Name</th>
-                  <th>Spool</th>
+                  <th style={{ width: '130px' }}>Spool</th>
                   <th className="num">Grams</th>
                   <th className="col-center">Channel</th>
                   <th className="num">Cost</th>
@@ -714,7 +714,7 @@ export function InventoryView({
 
                   return (
                     <tr key={h.id}>
-                      <td className="text-muted">{dateStr}</td>
+                      <td className="text-muted table-cell-nowrap">{dateStr}</td>
                       <td>
                         <div className="history-project-name">{h.project_name}</div>
                         {h.notes && (

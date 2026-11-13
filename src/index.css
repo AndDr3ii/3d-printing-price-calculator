@@ -2231,7 +2231,7 @@ body {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
-  margin-top: 1rem;
+  margin-top: 0;
 }
 
 .spool-card {
@@ -2463,61 +2463,101 @@ body {
   padding: 24px;
 }
 
-.inventory-section-card .calc-card-header {
+.inventory-section-card .calc-card-header,
+.inventory-container .calc-card-header {
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
   padding: 0 0 16px 0;
-  cursor: default;
+  cursor: default !important;
+}
+
+.inventory-section-card .calc-card-header:hover,
+.inventory-section-card .calc-card-header:active,
+.inventory-container .calc-card-header:hover,
+.inventory-container .calc-card-header:active {
+  background: transparent !important;
+  background-color: transparent !important;
 }
 
 .history-table-container {
   overflow-x: auto;
   width: 100%;
-  margin-top: 1rem;
+  margin-top: 0.5rem;
   border-radius: var(--radius-md);
 }
 
-.history-table {
+.history-table,
+.expenses-table {
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
   font-size: 0.85rem;
 }
 
-.history-table th {
+.history-table th,
+.expenses-table th {
   text-align: left;
   font-size: 0.72rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-muted);
-  padding: 14px 18px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--border-color);
   white-space: nowrap;
 }
 
 .history-table th.num,
-.history-table td.num {
+.history-table td.num,
+.expenses-table th.num,
+.expenses-table td.num {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
 .history-table th.col-center,
-.history-table td.col-center {
+.history-table td.col-center,
+.expenses-table th.col-center,
+.expenses-table td.col-center {
   text-align: center;
 }
 
-.history-table td {
-  padding: 14px 18px;
+.history-table td,
+.expenses-table td {
+  padding: 14px 16px;
   border-bottom: 1px solid var(--border-color);
   color: var(--text-secondary);
   vertical-align: middle;
 }
 
-.history-table tbody tr:last-child td {
+.history-table th:first-child,
+.history-table td:first-child,
+.expenses-table th:first-child,
+.expenses-table td:first-child {
+  padding-left: 16px;
+}
+
+.history-table th:last-child,
+.history-table td:last-child,
+.expenses-table th:last-child,
+.expenses-table td:last-child {
+  padding-right: 16px;
+}
+
+.history-table tbody tr:last-child td,
+.expenses-table tbody tr:last-child td {
   border-bottom: none;
 }
 
-.history-table tr:hover td {
+.history-table tr:hover td,
+.expenses-table tr:hover td {
   background: var(--bg-hover);
+}
+
+.table-cell-nowrap {
+  white-space: nowrap !important;
 }
 
 .history-project-name {
@@ -2708,7 +2748,7 @@ body {
   border-radius: 18px;
   background: var(--bg-card);
   border: 1px solid var(--border-color);
-  padding: 22px;
+  padding: 24px;
   display: flex;
   flex-direction: column;
   gap: 18px;
