@@ -552,7 +552,7 @@ export function InventoryView({
       </div>
 
       {/* Business Expenses (CapEx & OpEx) Section */}
-      <div className="calc-card">
+      <div className="calc-card inventory-section-card">
         <div className="calc-card-header">
           <div className="calc-card-title-wrap">
             <span className="step-icon-badge">
@@ -646,7 +646,7 @@ export function InventoryView({
       </div>
 
       {/* Print & Sales History Section */}
-      <div className="calc-card">
+      <div className="calc-card inventory-section-card">
         <div className="calc-card-header">
           <div className="calc-card-title-wrap">
             <span className="step-icon-badge">
@@ -1117,10 +1117,18 @@ export function InventoryView({
         title="Delete Print & Sales History Record"
         message={
           historyItemToDelete
-            ? historyItemToDelete.multicolor_deductions &&
-              historyItemToDelete.multicolor_deductions.length > 1
-              ? `Deleting this record will also restore ${historyItemToDelete.grams_used}g back across ${historyItemToDelete.multicolor_deductions.length} spools in your workshop inventory.`
-              : `Deleting this record will also restore ${historyItemToDelete.grams_used}g back to ${historyItemToDelete.spool_color_name || historyItemToDelete.spool_code || 'spool'}.`
+            ? (historyItemToDelete.deductions && historyItemToDelete.deductions.length > 1) ||
+              (historyItemToDelete.multicolor_deductions &&
+                historyItemToDelete.multicolor_deductions.length > 1)
+              ? `Deleting this record will also restore ${historyItemToDelete.grams_used}g back across ${
+                  historyItemToDelete.deductions?.length ||
+                  historyItemToDelete.multicolor_deductions?.length
+                } spools in your workshop inventory.`
+              : `Deleting this record will also restore ${historyItemToDelete.grams_used}g back to ${
+                  historyItemToDelete.spool_color_name ||
+                  historyItemToDelete.spool_code ||
+                  'spool'
+                }.`
             : ''
         }
         confirmLabel="Delete & Restore Stock"

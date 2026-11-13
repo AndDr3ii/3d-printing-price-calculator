@@ -1388,9 +1388,13 @@ export function App() {
             }}
             onDeleteHistoryItem={async (id) => {
               await DatabaseService.getInstance().deleteHistoryItem(id);
-              const updated = await DatabaseService.getInstance().getHistory();
-              setHistory(updated);
-              showToast('History record deleted');
+              const [updatedSpools, updatedHistory] = await Promise.all([
+                DatabaseService.getInstance().getSpools(),
+                DatabaseService.getInstance().getHistory(),
+              ]);
+              setSpools(updatedSpools);
+              setHistory(updatedHistory);
+              showToast('History record deleted & filament stock restored');
             }}
             onAddExpense={async (newExpense) => {
               await DatabaseService.getInstance().addExpense(newExpense);

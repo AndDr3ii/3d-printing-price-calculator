@@ -182,6 +182,8 @@ export interface JobHistoryRecord {
   sales_channel: SalesChannel;
   notes?: string;
   multicolor_deductions?: MulticolorDeductionRecord[];
+  deductions?: Array<{ spool_id: string; grams: number }>;
+  deductions_json?: string;
 }
 
 /* ==========================================================

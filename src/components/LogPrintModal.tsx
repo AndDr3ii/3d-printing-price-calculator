@@ -113,6 +113,11 @@ export function LogPrintModal({
 
       const primarySpool = spools.find((s) => s.id === deductions[0]?.spool_id);
 
+      const canonicalDeductions = deductions.map((d) => ({
+        spool_id: d.spool_id,
+        grams: d.grams_used,
+      }));
+
       const record: JobHistoryRecord = {
         id: `job-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
         date: new Date().toISOString(),
@@ -132,6 +137,8 @@ export function LogPrintModal({
         sales_channel: recordType === 'sale' ? salesChannel : 'Internal',
         notes: notes.trim(),
         multicolor_deductions: isMultiColor ? deductions : undefined,
+        deductions: canonicalDeductions,
+        deductions_json: JSON.stringify(canonicalDeductions),
       };
 
       await onConfirm(record, deductions);

@@ -20,6 +20,31 @@ const STORAGE_KEYS_SQL_FALLBACK = {
   TEMPLATES: 'printops_templates_fallback_v1',
 };
 
+const memoryStore = new Map<string, string>();
+
+function getStorageItem(key: string): string | null {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const val = localStorage.getItem(key);
+      if (val !== null) return val;
+    }
+  } catch {
+    // ignore
+  }
+  return memoryStore.get(key) ?? null;
+}
+
+function setStorageItem(key: string, value: string): void {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(key, value);
+    }
+  } catch {
+    // ignore
+  }
+  memoryStore.set(key, value);
+}
+
 const INITIAL_EXPENSES_SEED: ExpenseItem[] = [
   {
     id: 'exp-1',
@@ -457,30 +482,29 @@ export class DatabaseService {
   }
 
   private initBrowserFallback(): void {
-    if (typeof window === 'undefined') return;
-    if (!localStorage.getItem(STORAGE_KEYS_SQL_FALLBACK.SETTINGS)) {
-      localStorage.setItem(
+    if (!getStorageItem(STORAGE_KEYS_SQL_FALLBACK.SETTINGS)) {
+      setStorageItem(
         STORAGE_KEYS_SQL_FALLBACK.SETTINGS,
         JSON.stringify(DEFAULT_SETTINGS_SEED)
       );
     }
-    if (!localStorage.getItem(STORAGE_KEYS_SQL_FALLBACK.SPOOLS)) {
-      localStorage.setItem(
+    if (!getStorageItem(STORAGE_KEYS_SQL_FALLBACK.SPOOLS)) {
+      setStorageItem(
         STORAGE_KEYS_SQL_FALLBACK.SPOOLS,
         JSON.stringify(INITIAL_SPOOLS_SEED)
       );
     }
-    if (!localStorage.getItem(STORAGE_KEYS_SQL_FALLBACK.HISTORY)) {
-      localStorage.setItem(STORAGE_KEYS_SQL_FALLBACK.HISTORY, JSON.stringify([]));
+    if (!getStorageItem(STORAGE_KEYS_SQL_FALLBACK.HISTORY)) {
+      setStorageItem(STORAGE_KEYS_SQL_FALLBACK.HISTORY, JSON.stringify([]));
     }
-    if (!localStorage.getItem(STORAGE_KEYS_SQL_FALLBACK.EXPENSES)) {
-      localStorage.setItem(
+    if (!getStorageItem(STORAGE_KEYS_SQL_FALLBACK.EXPENSES)) {
+      setStorageItem(
         STORAGE_KEYS_SQL_FALLBACK.EXPENSES,
         JSON.stringify(INITIAL_EXPENSES_SEED)
       );
     }
-    if (!localStorage.getItem(STORAGE_KEYS_SQL_FALLBACK.TEMPLATES)) {
-      localStorage.setItem(
+    if (!getStorageItem(STORAGE_KEYS_SQL_FALLBACK.TEMPLATES)) {
+      setStorageItem(
         STORAGE_KEYS_SQL_FALLBACK.TEMPLATES,
         JSON.stringify(INITIAL_TEMPLATES_SEED)
       );
@@ -504,7 +528,7 @@ export class DatabaseService {
     }
 
     try {
-      const raw = localStorage.getItem(STORAGE_KEYS_SQL_FALLBACK.SETTINGS);
+      const raw = getStorageItem(STORAGE_KEYS_SQL_FALLBACK.SETTINGS);
       if (raw) return JSON.parse(raw);
     } catch {
       // ignore
@@ -541,7 +565,7 @@ export class DatabaseService {
       }
     }
     try {
-      localStorage.setItem(
+      setStorageItem(
         STORAGE_KEYS_SQL_FALLBACK.SETTINGS,
         JSON.stringify(s)
       );
@@ -567,7 +591,7 @@ export class DatabaseService {
     }
 
     try {
-      const raw = localStorage.getItem(STORAGE_KEYS_SQL_FALLBACK.SPOOLS);
+      const raw = getStorageItem(STORAGE_KEYS_SQL_FALLBACK.SPOOLS);
       if (raw) return JSON.parse(raw);
     } catch {
       // ignore
@@ -605,7 +629,7 @@ export class DatabaseService {
     try {
       const current = await this.getSpools();
       const updated = [...current, spool];
-      localStorage.setItem(
+      setStorageItem(
         STORAGE_KEYS_SQL_FALLBACK.SPOOLS,
         JSON.stringify(updated)
       );
@@ -642,7 +666,7 @@ export class DatabaseService {
     try {
       const current = await this.getSpools();
       const updated = current.map((s) => (s.id === spool.id ? spool : s));
-      localStorage.setItem(
+      setStorageItem(
         STORAGE_KEYS_SQL_FALLBACK.SPOOLS,
         JSON.stringify(updated)
       );
@@ -698,7 +722,7 @@ export class DatabaseService {
     try {
       const current = await this.getSpools();
       const updated = current.filter((s) => s.id !== id);
-      localStorage.setItem(
+      setStorageItem(
         STORAGE_KEYS_SQL_FALLBACK.SPOOLS,
         JSON.stringify(updated)
       );
@@ -724,7 +748,7 @@ export class DatabaseService {
     }
 
     try {
-      const raw = localStorage.getItem(STORAGE_KEYS_SQL_FALLBACK.EXPENSES);
+      const raw = getStorageItem(STORAGE_KEYS_SQL_FALLBACK.EXPENSES);
       if (raw) return JSON.parse(raw);
     } catch {
       // ignore
@@ -760,7 +784,7 @@ export class DatabaseService {
     try {
       const current = await this.getExpenses();
       const updated = [expense, ...current];
-      localStorage.setItem(
+      setStorageItem(
         STORAGE_KEYS_SQL_FALLBACK.EXPENSES,
         JSON.stringify(updated)
       );
@@ -784,7 +808,7 @@ export class DatabaseService {
     try {
       const current = await this.getExpenses();
       const updated = current.filter((e) => e.id !== id);
-      localStorage.setItem(
+      setStorageItem(
         STORAGE_KEYS_SQL_FALLBACK.EXPENSES,
         JSON.stringify(updated)
       );
@@ -810,7 +834,7 @@ export class DatabaseService {
     }
 
     try {
-      const raw = localStorage.getItem(STORAGE_KEYS_SQL_FALLBACK.TEMPLATES);
+      const raw = getStorageItem(STORAGE_KEYS_SQL_FALLBACK.TEMPLATES);
       if (raw) return JSON.parse(raw);
     } catch {
       // ignore
@@ -859,7 +883,7 @@ export class DatabaseService {
         template,
         ...current.filter((t) => t.id !== template.id),
       ];
-      localStorage.setItem(
+      setStorageItem(
         STORAGE_KEYS_SQL_FALLBACK.TEMPLATES,
         JSON.stringify(updated)
       );
@@ -883,7 +907,7 @@ export class DatabaseService {
     try {
       const current = await this.getProductTemplates();
       const updated = current.filter((t) => t.id !== id);
-      localStorage.setItem(
+      setStorageItem(
         STORAGE_KEYS_SQL_FALLBACK.TEMPLATES,
         JSON.stringify(updated)
       );
@@ -895,6 +919,9 @@ export class DatabaseService {
   // --- JOBS & SALES HISTORY ---
   public async getHistory(): Promise<JobHistoryRecord[]> {
     await this.init();
+    const spools = await this.getSpools();
+    const spoolMap = new Map(spools.map((s) => [s.id, s]));
+
     const sqlMod = await getSql();
     if (sqlMod) {
       try {
@@ -909,18 +936,44 @@ export class DatabaseService {
         );
         if (rows) {
           return rows.map((r) => {
-            let deductions: MulticolorDeductionRecord[] | undefined = undefined;
-            const rawJson = r.multicolor_deductions_json || r.deductions_json;
+            let canonicalDeductions: Array<{ spool_id: string; grams: number }> = [];
+            const rawJson = r.deductions_json || r.multicolor_deductions_json;
             if (rawJson) {
               try {
-                deductions = JSON.parse(rawJson);
+                const parsed = JSON.parse(rawJson);
+                if (Array.isArray(parsed)) {
+                  canonicalDeductions = parsed.map((it: any) => ({
+                    spool_id: String(it.spool_id || it.spoolId || ''),
+                    grams: Number(it.grams ?? it.grams_used ?? 0),
+                  })).filter((d) => d.spool_id && d.grams > 0);
+                }
               } catch {
                 // ignore
               }
             }
+
+            if (canonicalDeductions.length === 0 && r.spool_id && r.grams_used > 0) {
+              canonicalDeductions = [
+                { spool_id: r.spool_id, grams: Number(r.grams_used) },
+              ];
+            }
+
+            const multicolor_deductions: MulticolorDeductionRecord[] = canonicalDeductions.map((d) => {
+              const sp = spoolMap.get(d.spool_id);
+              return {
+                spool_id: d.spool_id,
+                spool_code: sp?.code,
+                color_name: sp?.color_name,
+                color_hex: sp?.color_hex,
+                grams_used: d.grams,
+              };
+            });
+
             return {
               ...r,
-              multicolor_deductions: deductions,
+              deductions: canonicalDeductions,
+              deductions_json: JSON.stringify(canonicalDeductions),
+              multicolor_deductions: multicolor_deductions.length > 1 ? multicolor_deductions : undefined,
             };
           });
         }
@@ -930,17 +983,64 @@ export class DatabaseService {
     }
 
     try {
-      const raw = localStorage.getItem(STORAGE_KEYS_SQL_FALLBACK.HISTORY);
+      const raw = getStorageItem(STORAGE_KEYS_SQL_FALLBACK.HISTORY);
       if (raw) {
         const list = JSON.parse(raw) as JobHistoryRecord[];
-        const spools = await this.getSpools();
         return list.map((item) => {
-          const sp = spools.find((s) => s.id === item.spool_id);
+          const sp = spoolMap.get(item.spool_id);
+
+          let canonicalDeductions: Array<{ spool_id: string; grams: number }> = [];
+          const rawJson =
+            item.deductions_json ||
+            (item as any).multicolor_deductions_json;
+
+          if (rawJson) {
+            try {
+              const parsed = typeof rawJson === 'string' ? JSON.parse(rawJson) : rawJson;
+              if (Array.isArray(parsed)) {
+                canonicalDeductions = parsed.map((it: any) => ({
+                  spool_id: String(it.spool_id || it.spoolId || ''),
+                  grams: Number(it.grams ?? it.grams_used ?? 0),
+                })).filter((d) => d.spool_id && d.grams > 0);
+              }
+            } catch {
+              // ignore
+            }
+          } else if (item.deductions && item.deductions.length > 0) {
+            canonicalDeductions = item.deductions.map((d) => ({
+              spool_id: d.spool_id,
+              grams: Number(d.grams),
+            }));
+          } else if (item.multicolor_deductions && item.multicolor_deductions.length > 0) {
+            canonicalDeductions = item.multicolor_deductions.map((d) => ({
+              spool_id: d.spool_id,
+              grams: Number(d.grams_used),
+            }));
+          } else if (item.spool_id && item.grams_used > 0) {
+            canonicalDeductions = [
+              { spool_id: item.spool_id, grams: Number(item.grams_used) },
+            ];
+          }
+
+          const multicolor_deductions: MulticolorDeductionRecord[] = canonicalDeductions.map((d) => {
+            const s = spoolMap.get(d.spool_id);
+            return {
+              spool_id: d.spool_id,
+              spool_code: s?.code,
+              color_name: s?.color_name,
+              color_hex: s?.color_hex,
+              grams_used: d.grams,
+            };
+          });
+
           return {
             ...item,
             spool_code: sp?.code,
             spool_color_name: sp?.color_name,
             spool_color_hex: sp?.color_hex,
+            deductions: canonicalDeductions,
+            deductions_json: JSON.stringify(canonicalDeductions),
+            multicolor_deductions: multicolor_deductions.length > 1 ? multicolor_deductions : undefined,
           };
         });
       }
@@ -952,16 +1052,39 @@ export class DatabaseService {
 
   public async logJob(job: JobHistoryRecord): Promise<void> {
     await this.init();
-    const deductionsJson = job.multicolor_deductions
-      ? JSON.stringify(job.multicolor_deductions)
-      : null;
+
+    // Canonical array of { spool_id: string, grams: number } for EVERY job
+    let canonicalDeductions: Array<{ spool_id: string; grams: number }> = [];
+
+    if (job.deductions && job.deductions.length > 0) {
+      canonicalDeductions = job.deductions.map((d) => ({
+        spool_id: d.spool_id,
+        grams: Number(d.grams),
+      }));
+    } else if (job.multicolor_deductions && job.multicolor_deductions.length > 0) {
+      canonicalDeductions = job.multicolor_deductions.map((d) => ({
+        spool_id: d.spool_id,
+        grams: Number((d as any).grams ?? d.grams_used ?? 0),
+      }));
+    } else if (job.spool_id && job.grams_used > 0) {
+      canonicalDeductions = [
+        {
+          spool_id: job.spool_id,
+          grams: Number(job.grams_used),
+        },
+      ];
+    }
+
+    const deductionsJson = JSON.stringify(canonicalDeductions);
+    job.deductions = canonicalDeductions;
+    job.deductions_json = deductionsJson;
 
     const sqlMod = await getSql();
     if (sqlMod) {
       try {
         const db = await sqlMod.default.load(DB_PATH);
         await db.execute(
-          `INSERT INTO jobs_history (id, date, project_name, spool_id, grams_used, print_minutes, quantity, production_cost, selling_price, net_profit, record_type, sales_channel, notes, multicolor_deductions_json, deductions_json)
+          `INSERT INTO jobs_history (id, date, project_name, spool_id, grams_used, print_minutes, quantity, production_cost, selling_price, net_profit, record_type, sales_channel, notes, deductions_json, multicolor_deductions_json)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15);`,
           [
             job.id,
@@ -989,7 +1112,7 @@ export class DatabaseService {
     try {
       const current = await this.getHistory();
       const updated = [job, ...current];
-      localStorage.setItem(
+      setStorageItem(
         STORAGE_KEYS_SQL_FALLBACK.HISTORY,
         JSON.stringify(updated)
       );
@@ -999,22 +1122,37 @@ export class DatabaseService {
   }
 
   /**
+   * Refunds consumed filament grams back to multiple physical spools in batch,
+   * clamping each spool's remaining weight at initial_weight_g.
+   */
+  public async refundMultipleSpools(
+    refunds: Array<{ spoolId: string; grams: number }>
+  ): Promise<void> {
+    await this.init();
+    const spools = await this.getSpools();
+    const spoolMap = new Map(spools.map((s) => [s.id, s]));
+
+    for (const r of refunds) {
+      const spool = spoolMap.get(r.spoolId);
+      if (spool) {
+        const maxWeight = spool.initial_weight_g || 1000;
+        const newWeight = Math.min(
+          maxWeight,
+          Math.round(((spool.remaining_weight_g ?? 0) + r.grams) * 10) / 10
+        );
+        const updated = { ...spool, remaining_weight_g: newWeight };
+        await this.updateSpool(updated);
+        spoolMap.set(spool.id, updated);
+      }
+    }
+  }
+
+  /**
    * Refunds consumed filament grams back to the corresponding physical spool,
    * clamping the remaining weight at initial_weight_g.
    */
   public async refundSpoolWeight(spoolId: string, gramsToRefund: number): Promise<void> {
-    await this.init();
-    const spools = await this.getSpools();
-    const target = spools.find((s) => s.id === spoolId);
-    if (!target) return;
-
-    const maxWeight = target.initial_weight_g || 1000;
-    const newWeight = Math.min(
-      maxWeight,
-      Math.round(((target.remaining_weight_g ?? 0) + gramsToRefund) * 10) / 10
-    );
-    const updated = { ...target, remaining_weight_g: newWeight };
-    await this.updateSpool(updated);
+    await this.refundMultipleSpools([{ spoolId, grams: gramsToRefund }]);
   }
 
   /**
@@ -1028,23 +1166,40 @@ export class DatabaseService {
     const currentHistory = await this.getHistory();
     const targetJob = currentHistory.find((h) => h.id === id);
 
-    // 2. Restore/add grams_used back to the corresponding spool(s)
     if (targetJob) {
-      if (
-        targetJob.multicolor_deductions &&
-        targetJob.multicolor_deductions.length > 0
-      ) {
-        for (const deduction of targetJob.multicolor_deductions) {
-          if (deduction.spool_id && deduction.grams_used > 0) {
-            await this.refundSpoolWeight(deduction.spool_id, deduction.grams_used);
+      const refundsToApply: Array<{ spoolId: string; grams: number }> = [];
+
+      // Check canonical targetJob.deductions first, then multicolor_deductions
+      const list =
+        targetJob.deductions && targetJob.deductions.length > 0
+          ? targetJob.deductions
+          : targetJob.multicolor_deductions;
+
+      if (Array.isArray(list) && list.length > 0) {
+        for (const item of list) {
+          const sId = item.spool_id || (item as any).spoolId;
+          const g = Number(
+            (item as any).grams ??
+            (item as any).grams_used ??
+            0
+          );
+          if (sId && g > 0) {
+            refundsToApply.push({ spoolId: sId, grams: g });
           }
         }
       } else if (targetJob.spool_id && targetJob.grams_used > 0) {
-        await this.refundSpoolWeight(targetJob.spool_id, targetJob.grams_used);
+        refundsToApply.push({
+          spoolId: targetJob.spool_id,
+          grams: Number(targetJob.grams_used),
+        });
+      }
+
+      if (refundsToApply.length > 0) {
+        await this.refundMultipleSpools(refundsToApply);
       }
     }
 
-    // 3. Delete the row from SQLite
+    // 2. Delete the row from SQLite
     const sqlMod = await getSql();
     if (sqlMod) {
       try {
@@ -1055,10 +1210,10 @@ export class DatabaseService {
       }
     }
 
-    // 4. Delete the row from localStorage fallback
+    // 3. Delete the row from storage fallback
     try {
       const updated = currentHistory.filter((h) => h.id !== id);
-      localStorage.setItem(
+      setStorageItem(
         STORAGE_KEYS_SQL_FALLBACK.HISTORY,
         JSON.stringify(updated)
       );
@@ -1235,25 +1390,25 @@ export class DatabaseService {
       }
     }
 
-    // Sync to browser fallback storage
+    // Sync to fallback storage
     try {
-      localStorage.setItem(
+      setStorageItem(
         STORAGE_KEYS_SQL_FALLBACK.SETTINGS,
         JSON.stringify(backup.settings)
       );
-      localStorage.setItem(
+      setStorageItem(
         STORAGE_KEYS_SQL_FALLBACK.SPOOLS,
         JSON.stringify(backup.spools)
       );
-      localStorage.setItem(
+      setStorageItem(
         STORAGE_KEYS_SQL_FALLBACK.EXPENSES,
         JSON.stringify(backup.expenses || [])
       );
-      localStorage.setItem(
+      setStorageItem(
         STORAGE_KEYS_SQL_FALLBACK.TEMPLATES,
         JSON.stringify(backup.product_templates || [])
       );
-      localStorage.setItem(
+      setStorageItem(
         STORAGE_KEYS_SQL_FALLBACK.HISTORY,
         JSON.stringify(backup.jobs_history || [])
       );
