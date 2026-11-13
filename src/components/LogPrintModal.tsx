@@ -1,4 +1,4 @@
-import { CheckCircle2, DollarSign, PackageMinus, X } from 'lucide-react';
+import { CheckCircle2, DollarSign, Layers, PackageMinus, X } from 'lucide-react';
 import { useState } from 'react';
 import { CURRENCIES } from '../constants/defaults';
 import type {
@@ -6,6 +6,7 @@ import type {
   CalculatorState,
   FilamentSpool,
   JobHistoryRecord,
+  MulticolorDeductionRecord,
   RecordType,
   SalesChannel,
 } from '../types/calculator';
@@ -16,7 +17,10 @@ interface LogPrintModalProps {
   state: CalculatorState;
   result: CalculationResult;
   spools: FilamentSpool[];
-  onConfirm: (record: JobHistoryRecord, deductSpoolId: string, gramsToDeduct: number) => Promise<void>;
+  onConfirm: (
+    record: JobHistoryRecord,
+    deductions: MulticolorDeductionRecord[]
+  ) => Promise<void>;
 }
 
 export function LogPrintModal({
@@ -32,17 +36,36 @@ export function LogPrintModal({
 
   // Total filament grams consumed = modelWeight * quantity * (1 + failedPrintsMarkup / 100)
   const failureMultiplier = 1 + (state.failedPrintsMarkup || 0) / 100;
-  const totalGramsConsumed = Math.round(state.modelWeight * qty * failureMultiplier * 10) / 10;
+  const totalGramsConsumed =
+    Math.round(state.modelWeight * qty * failureMultiplier * 10) / 10;
   const printMinutes = Math.round(result.totalPrintHours * 60 * qty);
+
+  const isMultiColor =
+    Boolean(state.multiColorSlots && state.multiColorSlots.length > 1);
 
   const [recordType, setRecordType] = useState<RecordType>('sale');
   const [salesChannel, setSalesChannel] = useState<SalesChannel>('Vinted');
   const [soldPrice, setSoldPrice] = useState<string>(
     result.batchSellingPrice.toFixed(2)
   );
+
+  // Single spool state
   const [selectedSpoolId, setSelectedSpoolId] = useState<string>(
     state.selectedSpoolId || (spools.length > 0 ? spools[0].id : '')
   );
+
+  // Multi-color per-slot spool mapping: slotId -> spoolId
+  const [multiSpoolMap, setMultiSpoolMap] = useState<Record<number, string>>(() => {
+    const initMap: Record<number, string> = {};
+    if (state.multiColorSlots) {
+      for (const slot of state.multiColorSlots) {
+        initMap[slot.slotId] =
+          slot.assignedSpoolId || (spools.length > 0 ? spools[0].id : '');
+      }
+    }
+    return initMap;
+  });
+
   const [notes, setNotes] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -57,30 +80,61 @@ export function LogPrintModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedSpoolId) return;
-
     setIsSubmitting(true);
     try {
+      let deductions: MulticolorDeductionRecord[] = [];
+
+      if (isMultiColor && state.multiColorSlots) {
+        deductions = state.multiColorSlots.map((slot) => {
+          const spoolId = multiSpoolMap[slot.slotId] || slot.assignedSpoolId || '';
+          const matchedSpool = spools.find((s) => s.id === spoolId);
+          const grams =
+            Math.round(slot.usedGrams * qty * failureMultiplier * 10) / 10;
+          return {
+            spool_id: spoolId,
+            spool_code: matchedSpool?.code,
+            color_name: matchedSpool?.color_name || slot.color,
+            color_hex: matchedSpool?.color_hex || slot.color,
+            grams_used: grams,
+          };
+        });
+      } else {
+        if (!selectedSpoolId) return;
+        deductions = [
+          {
+            spool_id: selectedSpoolId,
+            spool_code: selectedSpool?.code,
+            color_name: selectedSpool?.color_name,
+            color_hex: selectedSpool?.color_hex,
+            grams_used: totalGramsConsumed,
+          },
+        ];
+      }
+
+      const primarySpool = spools.find((s) => s.id === deductions[0]?.spool_id);
+
       const record: JobHistoryRecord = {
         id: `job-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
         date: new Date().toISOString(),
         project_name: state.jobName || 'Custom 3D Print Job',
-        spool_id: selectedSpoolId,
-        spool_code: selectedSpool?.code,
-        spool_color_name: selectedSpool?.color_name,
-        spool_color_hex: selectedSpool?.color_hex,
+        spool_id: deductions[0]?.spool_id || selectedSpoolId,
+        spool_code: primarySpool?.code || selectedSpool?.code,
+        spool_color_name: primarySpool?.color_name || selectedSpool?.color_name,
+        spool_color_hex: primarySpool?.color_hex || selectedSpool?.color_hex,
         grams_used: totalGramsConsumed,
         print_minutes: printMinutes,
         quantity: qty,
         production_cost: Math.round(result.batchProductionCost * 100) / 100,
-        selling_price: recordType === 'sale' ? Math.round(numericSoldPrice * 100) / 100 : 0,
+        selling_price:
+          recordType === 'sale' ? Math.round(numericSoldPrice * 100) / 100 : 0,
         net_profit: Math.round(calculatedProfit * 100) / 100,
         record_type: recordType,
         sales_channel: recordType === 'sale' ? salesChannel : 'Internal',
         notes: notes.trim(),
+        multicolor_deductions: isMultiColor ? deductions : undefined,
       };
 
-      await onConfirm(record, selectedSpoolId, totalGramsConsumed);
+      await onConfirm(record, deductions);
       onClose();
     } finally {
       setIsSubmitting(false);
@@ -122,7 +176,9 @@ export function LogPrintModal({
           <div className="modal-summary-banner">
             <div className="modal-banner-col">
               <span className="modal-banner-label">Job Name</span>
-              <strong className="modal-banner-val">{state.jobName || '3D Print Job'}</strong>
+              <strong className="modal-banner-val">
+                {state.jobName || '3D Print Job'}
+              </strong>
             </div>
             <div className="modal-banner-col">
               <span className="modal-banner-label">Quantity</span>
@@ -136,33 +192,107 @@ export function LogPrintModal({
             </div>
           </div>
 
-          {/* Spool Selection for Deduction */}
-          <div className="field-group">
-            <label htmlFor="modal-spool-select" className="field-label">
-              Filament Spool to Deduct
-            </label>
-            <select
-              id="modal-spool-select"
-              className="field-select"
-              value={selectedSpoolId}
-              onChange={(e) => setSelectedSpoolId(e.target.value)}
-              required
-            >
-              {spools.map((sp) => (
-                <option key={sp.id} value={sp.id}>
-                  {sp.code} · {sp.brand} {sp.material} {sp.color_name} ({sp.remaining_weight_g}g remaining)
-                </option>
-              ))}
-            </select>
-            {selectedSpool && (
-              <span className="field-hint">
-                Remaining after deduction:{' '}
-                <strong>
-                  {Math.max(0, Math.round((selectedSpool.remaining_weight_g - totalGramsConsumed) * 10) / 10)} g
-                </strong>
-              </span>
-            )}
-          </div>
+          {/* Filament Deduction Selectors */}
+          {isMultiColor && state.multiColorSlots ? (
+            <div className="field-group">
+              <div className="field-label-row">
+                <label className="field-label">
+                  Bambu AMS Lite Multi-Color Slot Deductions
+                </label>
+                <span className="multicolor-count-tag">
+                  <Layers size={13} /> {state.multiColorSlots.length} Slots
+                </span>
+              </div>
+              <div className="modal-multicolor-list">
+                {state.multiColorSlots.map((slot) => {
+                  const slotGrams =
+                    Math.round(slot.usedGrams * qty * failureMultiplier * 10) /
+                    10;
+                  const currentSpoolId =
+                    multiSpoolMap[slot.slotId] || slot.assignedSpoolId || '';
+                  const assignedSpool = spools.find(
+                    (s) => s.id === currentSpoolId
+                  );
+
+                  return (
+                    <div key={slot.slotId} className="modal-multicolor-item">
+                      <div className="modal-slot-info">
+                        <span
+                          className="spool-swatch"
+                          style={{ backgroundColor: slot.color }}
+                        />
+                        <div className="modal-slot-text">
+                          <span className="modal-slot-title">
+                            Slot {slot.slotId} &middot; {slot.type}
+                          </span>
+                          <span className="modal-slot-grams font-mono">
+                            {slotGrams} g to deduct
+                          </span>
+                        </div>
+                      </div>
+                      <select
+                        className="field-select font-mono modal-slot-select"
+                        value={currentSpoolId}
+                        onChange={(e) =>
+                          setMultiSpoolMap((prev) => ({
+                            ...prev,
+                            [slot.slotId]: e.target.value,
+                          }))
+                        }
+                        required
+                      >
+                        <option value="">Select workshop spool...</option>
+                        {spools.map((sp) => (
+                          <option key={sp.id} value={sp.id}>
+                            {sp.code} · {sp.brand} {sp.material} {sp.color_name} ({Math.round(sp.remaining_weight_g)}g left)
+                          </option>
+                        ))}
+                      </select>
+                      {assignedSpool && (
+                        <div className="modal-slot-remainder">
+                          Left after: {Math.max(0, Math.round((assignedSpool.remaining_weight_g - slotGrams) * 10) / 10)}g
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="field-group">
+              <label htmlFor="modal-spool-select" className="field-label">
+                Filament Spool to Deduct
+              </label>
+              <select
+                id="modal-spool-select"
+                className="field-select"
+                value={selectedSpoolId}
+                onChange={(e) => setSelectedSpoolId(e.target.value)}
+                required
+              >
+                {spools.map((sp) => (
+                  <option key={sp.id} value={sp.id}>
+                    {sp.code} · {sp.brand} {sp.material} {sp.color_name} ({sp.remaining_weight_g}g remaining)
+                  </option>
+                ))}
+              </select>
+              {selectedSpool && (
+                <span className="field-hint">
+                  Remaining after deduction:{' '}
+                  <strong>
+                    {Math.max(
+                      0,
+                      Math.round(
+                        (selectedSpool.remaining_weight_g - totalGramsConsumed) *
+                          10
+                      ) / 10
+                    )}{' '}
+                    g
+                  </strong>
+                </span>
+              )}
+            </div>
+          )}
 
           {/* Record Type Toggle */}
           <div className="field-group">
@@ -170,14 +300,18 @@ export function LogPrintModal({
             <div className="segmented-toggle-row">
               <button
                 type="button"
-                className={`segmented-btn ${recordType === 'sale' ? 'is-active' : ''}`}
+                className={`segmented-btn ${
+                  recordType === 'sale' ? 'is-active' : ''
+                }`}
                 onClick={() => setRecordType('sale')}
               >
                 <DollarSign size={14} /> Confirmed Sale
               </button>
               <button
                 type="button"
-                className={`segmented-btn ${recordType === 'print_only' ? 'is-active' : ''}`}
+                className={`segmented-btn ${
+                  recordType === 'print_only' ? 'is-active' : ''
+                }`}
                 onClick={() => setRecordType('print_only')}
               >
                 <PackageMinus size={14} /> Internal / Prototype Print
@@ -196,7 +330,9 @@ export function LogPrintModal({
                   id="modal-channel-select"
                   className="field-select"
                   value={salesChannel}
-                  onChange={(e) => setSalesChannel(e.target.value as SalesChannel)}
+                  onChange={(e) =>
+                    setSalesChannel(e.target.value as SalesChannel)
+                  }
                 >
                   <option value="Vinted">Vinted</option>
                   <option value="Wallapop">Wallapop</option>
@@ -230,9 +366,17 @@ export function LogPrintModal({
           {/* Calculated Profit Indicator */}
           <div className="modal-profit-card">
             <span>
-              {recordType === 'sale' ? 'Estimated Net Profit:' : 'Operational Cost Incurred:'}
+              {recordType === 'sale'
+                ? 'Estimated Net Profit:'
+                : 'Operational Cost Incurred:'}
             </span>
-            <strong className={calculatedProfit >= 0 ? 'text-profit font-mono' : 'text-danger font-mono'}>
+            <strong
+              className={
+                calculatedProfit >= 0
+                  ? 'text-profit font-mono'
+                  : 'text-danger font-mono'
+              }
+            >
               {currencySymbol}
               {calculatedProfit.toFixed(2)}
             </strong>
@@ -267,7 +411,7 @@ export function LogPrintModal({
             <button
               type="submit"
               className="btn-primary"
-              disabled={isSubmitting || !selectedSpoolId}
+              disabled={isSubmitting}
             >
               <CheckCircle2 size={16} />
               {isSubmitting ? 'Recording...' : 'Confirm & Deduct'}

@@ -1,4 +1,8 @@
 import JSZip from 'jszip';
+import type {
+  FilamentSlotAssignment,
+  FilamentSlotUsage,
+} from '../types/calculator';
 
 export interface SlicedFileParseResult {
   printHours: number;
@@ -10,6 +14,7 @@ export interface SlicedFileParseResult {
   success: boolean;
   message?: string;
   isUnsliced3mf?: boolean;
+  filamentSlots?: FilamentSlotUsage[];
 }
 
 /**
@@ -32,6 +37,156 @@ export function cleanProjectNameFromFileName(filename: string): string {
     .trim();
 
   return cleaned || filename;
+}
+
+/**
+ * Extracts per-filament slot usage (1 to 4 AMS Lite slots) from Bambu Studio / OrcaSlicer XML.
+ */
+export function extractFilamentSlotsFromXml(xmlText: string): FilamentSlotUsage[] {
+  const slots: FilamentSlotUsage[] = [];
+
+  // Match <filament ... /> or <filament>...</filament> tags
+  const filamentTagRegex = /<filament\b([^>]*)(?:\/>|>([\s\S]*?)<\/filament>)/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = filamentTagRegex.exec(xmlText)) !== null) {
+    const attrs = match[1] || '';
+    const inner = match[2] || '';
+
+    const idMatch =
+      attrs.match(/\bid\s*=\s*["'](\d+)["']/i) ||
+      inner.match(/<id>(\d+)<\/id>/i);
+    const typeMatch =
+      attrs.match(/\btype\s*=\s*["']([^"']+)["']/i) ||
+      inner.match(/<type>([^<]+)<\/type>/i);
+    const colorMatch =
+      attrs.match(/\bcolor\s*=\s*["']([^"']+)["']/i) ||
+      inner.match(/<color>([^<]+)<\/color>/i);
+    const weightMatch =
+      attrs.match(/\bused_g\s*=\s*["']([0-9.]+)["']/i) ||
+      attrs.match(/\bweight\s*=\s*["']([0-9.]+)["']/i) ||
+      attrs.match(/\bfilament_used_g\s*=\s*["']([0-9.]+)["']/i) ||
+      inner.match(/<used_g>([0-9.]+)<\/used_g>/i) ||
+      inner.match(/<weight>([0-9.]+)<\/weight>/i);
+
+    const slotId = idMatch ? parseInt(idMatch[1], 10) : slots.length + 1;
+    const type = typeMatch ? typeMatch[1].trim() : 'PETG';
+    let color = colorMatch ? colorMatch[1].trim() : '#71717A';
+    if (!color.startsWith('#')) {
+      color = `#${color}`;
+    }
+    const usedGrams = weightMatch ? parseFloat(weightMatch[1]) : 0;
+
+    if (usedGrams > 0 || slots.length < 4) {
+      slots.push({
+        id: slotId,
+        type,
+        color,
+        usedGrams: Math.round(usedGrams * 10) / 10,
+      });
+    }
+  }
+
+  // Deduplicate by slot id (keeping largest grams if multiple plates)
+  const slotMap = new Map<number, FilamentSlotUsage>();
+  for (const s of slots) {
+    const existing = slotMap.get(s.id);
+    if (!existing) {
+      slotMap.set(s.id, s);
+    } else {
+      slotMap.set(s.id, {
+        ...existing,
+        usedGrams: Math.round((existing.usedGrams + s.usedGrams) * 10) / 10,
+      });
+    }
+  }
+
+  return Array.from(slotMap.values())
+    .filter((s) => s.usedGrams > 0)
+    .sort((a, b) => a.id - b.id);
+}
+
+/**
+ * Extracts multi-filament slots from GCode comments (fallback for .gcode and legacy slicers).
+ */
+export function extractFilamentSlotsFromGCode(content: string): FilamentSlotUsage[] {
+  const lines = content.split(/\r?\n/).slice(0, 500);
+  let weights: number[] = [];
+  let colors: string[] = [];
+  let types: string[] = [];
+
+  for (const line of lines) {
+    if (weights.length === 0) {
+      const wMatch = line.match(
+        /;\s*(?:filament used \[g\]|filament_used_g)\s*=\s*([0-9.,\s]+)/i
+      );
+      if (wMatch && wMatch[1].includes(',')) {
+        weights = wMatch[1]
+          .split(',')
+          .map((p) => parseFloat(p.trim()))
+          .filter((v) => Number.isFinite(v));
+      }
+    }
+
+    if (colors.length === 0) {
+      const cMatch = line.match(
+        /;\s*(?:filament_colour|filament_color)\s*=\s*([^;]+(?:;[^;]+)*)/i
+      );
+      if (cMatch) {
+        colors = cMatch[1]
+          .split(';')
+          .map((c) => c.trim())
+          .filter(Boolean);
+      }
+    }
+
+    if (types.length === 0) {
+      const tMatch = line.match(
+        /;\s*filament_type\s*=\s*([^;]+(?:;[^;]+)*)/i
+      );
+      if (tMatch) {
+        types = tMatch[1]
+          .split(';')
+          .map((t) => t.trim())
+          .filter(Boolean);
+      }
+    }
+  }
+
+  if (weights.length > 1) {
+    return weights
+      .map((w, idx) => {
+        let color = colors[idx] || '#71717A';
+        if (!color.startsWith('#')) color = `#${color}`;
+        return {
+          id: idx + 1,
+          type: types[idx] || 'PETG',
+          color,
+          usedGrams: Math.round(w * 10) / 10,
+        };
+      })
+      .filter((s) => s.usedGrams > 0);
+  }
+
+  return [];
+}
+
+/**
+ * Calculates weighted material cost across all assigned multi-color slots.
+ */
+export function calculateWeightedMaterialCost(
+  slots: FilamentSlotAssignment[],
+  defaultPrice: number,
+  defaultWeight: number
+): number {
+  if (!slots || slots.length === 0) return 0;
+
+  return slots.reduce((total, slot) => {
+    const price = slot.customSpoolPrice ?? defaultPrice;
+    const weight = slot.customSpoolWeight ?? defaultWeight;
+    const pricePerGram = weight > 0 ? price / weight : 0;
+    return total + slot.usedGrams * pricePerGram;
+  }, 0);
 }
 
 /**
@@ -140,6 +295,8 @@ export function parseGCodeContent(
     ? Math.round((detectedSeconds % 3600) / 60)
     : 0;
 
+  const filamentSlots = extractFilamentSlotsFromGCode(content);
+
   return {
     printHours,
     printMinutes,
@@ -147,9 +304,10 @@ export function parseGCodeContent(
     projectName,
     rawTimeSeconds: detectedSeconds ?? undefined,
     slicerDetected: detectedSlicer,
+    filamentSlots: filamentSlots.length > 0 ? filamentSlots : undefined,
     success,
     message: success
-      ? `Autofilled from ${detectedSlicer || 'Sliced File'}: ${printHours}h ${printMinutes}m, ${detectedGrams ? `${detectedGrams.toFixed(1)}g` : 'weight estimated'}`
+      ? `Autofilled from ${detectedSlicer || 'Sliced File'}: ${printHours}h ${printMinutes}m, ${detectedGrams ? `${detectedGrams.toFixed(1)}g` : 'weight estimated'}${filamentSlots.length > 1 ? ` (${filamentSlots.length} AMS slots)` : ''}`
       : 'Could not extract slice metadata from this file.',
   };
 }
@@ -210,12 +368,22 @@ export async function parse3mfArchive(
         }
       }
 
+      const filamentSlots = extractFilamentSlotsFromXml(xmlText);
+      if ((totalGrams === null || totalGrams === 0) && filamentSlots.length > 0) {
+        totalGrams = filamentSlots.reduce((acc, s) => acc + s.usedGrams, 0);
+      }
+
       if (seconds !== null || totalGrams !== null) {
         const printHours = seconds ? Math.floor(seconds / 3600) : 0;
         const printMinutes = seconds ? Math.round((seconds % 3600) / 60) : 0;
         const finalWeight = totalGrams
           ? Math.round(totalGrams * 10) / 10
           : 0;
+
+        const slotSummary =
+          filamentSlots.length > 1
+            ? ` (${filamentSlots.length} AMS slots)`
+            : '';
 
         return {
           printHours,
@@ -224,8 +392,9 @@ export async function parse3mfArchive(
           projectName: cleanName,
           rawTimeSeconds: seconds ?? undefined,
           slicerDetected: 'Bambu Studio / OrcaSlicer',
+          filamentSlots: filamentSlots.length > 0 ? filamentSlots : undefined,
           success: true,
-          message: `Autofilled from Bambu Studio / OrcaSlicer .3mf: ${printHours}h ${printMinutes}m, ${finalWeight}g`,
+          message: `Autofilled from Bambu Studio / OrcaSlicer .3mf: ${printHours}h ${printMinutes}m, ${finalWeight}g${slotSummary}`,
         };
       }
     }

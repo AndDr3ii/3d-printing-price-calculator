@@ -1,5 +1,9 @@
 import {
   Archive,
+  ArrowDownToLine,
+  ArrowUpToLine,
+  Award,
+  DollarSign,
   Download,
   Edit2,
   Package,
@@ -7,11 +11,14 @@ import {
   Scale,
   Trash2,
   TrendingUp,
+  Wrench,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { CURRENCIES } from '../constants/defaults';
 import type {
   CurrencyCode,
+  ExpenseItem,
+  ExpenseType,
   FilamentSpool,
   JobHistoryRecord,
 } from '../types/calculator';
@@ -19,23 +26,34 @@ import type {
 interface InventoryViewProps {
   spools: FilamentSpool[];
   history: JobHistoryRecord[];
+  expenses: ExpenseItem[];
   currency: CurrencyCode;
   onAddSpool: (spool: FilamentSpool) => Promise<void>;
   onUpdateSpool: (spool: FilamentSpool) => Promise<void>;
   onDeleteSpool: (id: string) => Promise<void>;
   onDeleteHistoryItem: (id: string) => Promise<void>;
+  onAddExpense: (expense: ExpenseItem) => Promise<void>;
+  onDeleteExpense: (id: string) => Promise<void>;
+  onExportBackup: () => void;
+  onRestoreBackup: (file: File) => Promise<void>;
 }
 
 export function InventoryView({
   spools,
   history,
+  expenses,
   currency,
   onAddSpool,
   onUpdateSpool,
   onDeleteSpool,
   onDeleteHistoryItem,
+  onAddExpense,
+  onDeleteExpense,
+  onExportBackup,
+  onRestoreBackup,
 }: InventoryViewProps) {
   const currencySymbol = CURRENCIES[currency]?.symbol || '€';
+  const restoreFileInputRef = useRef<HTMLInputElement>(null);
 
   // KPI Calculations
   const totalGramsRemaining = useMemo(() => {
@@ -59,7 +77,29 @@ export function InventoryView({
     return history.reduce((acc, h) => acc + (h.net_profit || 0), 0);
   }, [history]);
 
-  // Modal State for Adding/Editing a Spool
+  // CapEx & OpEx ROI Calculations
+  const totalCapEx = useMemo(() => {
+    return expenses
+      .filter((e) => e.expense_type === 'CapEx')
+      .reduce((acc, e) => acc + (e.amount_eur || 0), 0);
+  }, [expenses]);
+
+  const totalOpEx = useMemo(() => {
+    return expenses
+      .filter((e) => e.expense_type === 'OpEx')
+      .reduce((acc, e) => acc + (e.amount_eur || 0), 0);
+  }, [expenses]);
+
+  const remainingBreakEven = useMemo(() => {
+    return Math.max(0, totalCapEx - totalProfit);
+  }, [totalCapEx, totalProfit]);
+
+  const amortizationPct = useMemo(() => {
+    if (totalCapEx <= 0) return 100;
+    return Math.min(100, Math.max(0, (totalProfit / totalCapEx) * 100));
+  }, [totalCapEx, totalProfit]);
+
+  // Modal State for Spools
   const [isSpoolModalOpen, setIsSpoolModalOpen] = useState(false);
   const [editingSpool, setEditingSpool] = useState<FilamentSpool | null>(null);
 
@@ -72,7 +112,17 @@ export function InventoryView({
   const [formRemainingWeight, setFormRemainingWeight] = useState(1000);
   const [formPrice, setFormPrice] = useState(10.23);
 
-  const openAddModal = () => {
+  // Modal State for Expenses
+  const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
+  const [expDate, setExpDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [expSupplier, setExpSupplier] = useState('');
+  const [expConcept, setExpConcept] = useState('');
+  const [expCategory, setExpCategory] = useState('Machinery');
+  const [expType, setExpType] = useState<ExpenseType>('CapEx');
+  const [expAmount, setExpAmount] = useState<number>(0);
+  const [expNotes, setExpNotes] = useState('');
+
+  const openAddSpoolModal = () => {
     const nextIndex = spools.length + 1;
     const padded = String(nextIndex).padStart(3, '0');
     setEditingSpool(null);
@@ -87,7 +137,7 @@ export function InventoryView({
     setIsSpoolModalOpen(true);
   };
 
-  const openEditModal = (sp: FilamentSpool) => {
+  const openEditSpoolModal = (sp: FilamentSpool) => {
     setEditingSpool(sp);
     setFormCode(sp.code);
     setFormBrand(sp.brand);
@@ -129,6 +179,42 @@ export function InventoryView({
       });
     }
     setIsSpoolModalOpen(false);
+  };
+
+  const openAddExpenseModal = () => {
+    setExpDate(new Date().toISOString().slice(0, 10));
+    setExpSupplier('');
+    setExpConcept('');
+    setExpCategory('Machinery');
+    setExpType('CapEx');
+    setExpAmount(0);
+    setExpNotes('');
+    setIsExpenseModalOpen(true);
+  };
+
+  const handleSaveExpense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!expConcept || expAmount <= 0) return;
+    await onAddExpense({
+      id: `exp-${Date.now()}`,
+      date: expDate,
+      supplier: expSupplier.trim() || 'Direct',
+      concept: expConcept.trim(),
+      category: expCategory,
+      expense_type: expType,
+      amount_eur: Number(expAmount),
+      notes: expNotes.trim(),
+    });
+    setIsExpenseModalOpen(false);
+  };
+
+  const handleRestoreFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await onRestoreBackup(file);
+    if (restoreFileInputRef.current) {
+      restoreFileInputRef.current.value = '';
+    }
   };
 
   // Export History as CSV
@@ -185,6 +271,45 @@ export function InventoryView({
 
   return (
     <div className="inventory-view-shell">
+      {/* Hidden File Input for Restoring Master Backup */}
+      <input
+        ref={restoreFileInputRef}
+        type="file"
+        accept=".json"
+        style={{ display: 'none' }}
+        onChange={handleRestoreFileSelected}
+      />
+
+      {/* View Header with Master Backup Controls */}
+      <div className="inventory-header-bar">
+        <div>
+          <h2 className="inventory-header-title">Workshop Management &amp; Analytics</h2>
+          <p className="inventory-header-sub">
+            Track physical spools, CapEx amortization, print history, and automated backups
+          </p>
+        </div>
+        <div className="inventory-header-actions">
+          <button
+            type="button"
+            className="btn-backup-secondary"
+            onClick={() => restoreFileInputRef.current?.click()}
+            title="Restore a previously exported PrintOps JSON backup file"
+          >
+            <ArrowUpToLine size={15} />
+            <span>Restore Backup</span>
+          </button>
+          <button
+            type="button"
+            className="btn-backup-primary"
+            onClick={onExportBackup}
+            title="Download a complete JSON master backup of all settings, spools, expenses, and history"
+          >
+            <ArrowDownToLine size={15} />
+            <span>Export Backup (.json)</span>
+          </button>
+        </div>
+      </div>
+
       {/* Top Workshop KPIs */}
       <div className="inventory-kpi-grid">
         <div className="inv-kpi-card">
@@ -237,6 +362,81 @@ export function InventoryView({
         </div>
       </div>
 
+      {/* Workshop Amortization / Break-Even Progress Card */}
+      <div className="calc-card break-even-card">
+        <div className="break-even-header">
+          <div className="calc-card-title-wrap">
+            <span className="step-icon-badge break-even-badge">
+              <Award size={18} />
+            </span>
+            <div className="calc-card-headings">
+              <h2 className="calc-card-title">Workshop Amortization &amp; ROI Tracker</h2>
+              <p className="calc-card-subtitle">
+                Tracks cumulative net profit against your initial CapEx machinery and equipment investments
+              </p>
+            </div>
+          </div>
+          <div className="break-even-pill">
+            {amortizationPct >= 100 ? (
+              <span className="pill-success">Fully Amortized &middot; Profitable</span>
+            ) : (
+              <span className="pill-active">
+                {currencySymbol}{remainingBreakEven.toFixed(2)} to Break-Even
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="break-even-stats-row">
+          <div className="be-stat">
+            <span className="be-stat-label">Total CapEx Investment</span>
+            <strong className="be-stat-val font-mono">
+              {currencySymbol}{totalCapEx.toFixed(2)}
+            </strong>
+          </div>
+          <div className="be-stat">
+            <span className="be-stat-label">Total OpEx Expenses</span>
+            <strong className="be-stat-val font-mono">
+              {currencySymbol}{totalOpEx.toFixed(2)}
+            </strong>
+          </div>
+          <div className="be-stat">
+            <span className="be-stat-label">Net Profit Recovered</span>
+            <strong className="be-stat-val text-profit font-mono">
+              {currencySymbol}{totalProfit.toFixed(2)}
+            </strong>
+          </div>
+          <div className="be-stat">
+            <span className="be-stat-label">Remaining to Break-Even</span>
+            <strong className="be-stat-val font-mono">
+              {currencySymbol}{remainingBreakEven.toFixed(2)}
+            </strong>
+          </div>
+          <div className="be-stat">
+            <span className="be-stat-label">Amortization Progress</span>
+            <strong className="be-stat-val text-profit font-mono">
+              {amortizationPct.toFixed(1)}%
+            </strong>
+          </div>
+        </div>
+
+        <div className="break-even-progress-shell">
+          <div className="break-even-progress-track">
+            <div
+              className="break-even-progress-bar"
+              style={{ width: `${amortizationPct}%` }}
+            />
+          </div>
+          <div className="break-even-progress-labels">
+            <span>€0.00 Initial</span>
+            <span className="font-semibold text-profit">
+              {amortizationPct.toFixed(1)}% Amortized
+            </span>
+            <span>{currencySymbol}{totalCapEx.toFixed(2)} Target</span>
+          </div>
+        </div>
+      </div>
+
       {/* Spool Inventory Section */}
       <div className="calc-card">
         <div className="calc-card-header">
@@ -254,7 +454,7 @@ export function InventoryView({
           <button
             type="button"
             className="btn-primary"
-            onClick={openAddModal}
+            onClick={openAddSpoolModal}
           >
             <Plus size={16} /> Add Spool
           </button>
@@ -296,7 +496,7 @@ export function InventoryView({
                       type="button"
                       className="btn-icon-subtle"
                       title="Edit spool / adjust grams"
-                      onClick={() => openEditModal(sp)}
+                      onClick={() => openEditSpoolModal(sp)}
                     >
                       <Edit2 size={15} />
                     </button>
@@ -349,6 +549,104 @@ export function InventoryView({
         </div>
       </div>
 
+      {/* Business Expenses (CapEx & OpEx) Section */}
+      <div className="calc-card">
+        <div className="calc-card-header">
+          <div className="calc-card-title-wrap">
+            <span className="step-icon-badge">
+              <Wrench size={18} />
+            </span>
+            <div className="calc-card-headings">
+              <h2 className="calc-card-title">Business Expenses &amp; Investments</h2>
+              <p className="calc-card-subtitle">
+                Machinery, storage boxes, filament dryers, consumables, and upkeep costs
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={openAddExpenseModal}
+          >
+            <Plus size={16} /> Log Expense
+          </button>
+        </div>
+
+        {expenses.length === 0 ? (
+          <div className="history-empty-state">
+            <DollarSign size={36} className="text-muted" />
+            <p className="history-empty-title">No expenses logged yet.</p>
+            <span className="field-hint">
+              Log machine purchases, filament dryers, or parts to calculate your exact workshop ROI.
+            </span>
+          </div>
+        ) : (
+          <div className="history-table-container">
+            <table className="history-table">
+              <colgroup>
+                <col style={{ width: '105px' }} />
+                <col />
+                <col style={{ width: '140px' }} />
+                <col style={{ width: '130px' }} />
+                <col style={{ width: '90px' }} />
+                <col style={{ width: '100px' }} />
+                <col style={{ width: '50px' }} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Concept</th>
+                  <th>Supplier</th>
+                  <th>Category</th>
+                  <th className="col-center">Type</th>
+                  <th className="num">Amount</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {expenses.map((exp) => (
+                  <tr key={exp.id}>
+                    <td className="text-muted font-mono">{exp.date}</td>
+                    <td>
+                      <div className="history-project-name">{exp.concept}</div>
+                      {exp.notes && (
+                        <div className="table-subnote">{exp.notes}</div>
+                      )}
+                    </td>
+                    <td>{exp.supplier}</td>
+                    <td className="text-muted">{exp.category}</td>
+                    <td className="col-center">
+                      <span
+                        className={`expense-type-badge badge-${exp.expense_type.toLowerCase()}`}
+                      >
+                        {exp.expense_type}
+                      </span>
+                    </td>
+                    <td className="num font-mono font-semibold">
+                      {currencySymbol}{exp.amount_eur.toFixed(2)}
+                    </td>
+                    <td className="num">
+                      <button
+                        type="button"
+                        className="btn-icon-subtle btn-delete"
+                        title="Delete expense"
+                        onClick={() => {
+                          if (confirm(`Delete expense "${exp.concept}"?`)) {
+                            onDeleteExpense(exp.id);
+                          }
+                        }}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       {/* Print & Sales History Section */}
       <div className="calc-card">
         <div className="calc-card-header">
@@ -388,13 +686,13 @@ export function InventoryView({
               <colgroup>
                 <col style={{ width: '110px' }} />
                 <col />
+                <col style={{ width: '130px' }} />
+                <col style={{ width: '90px' }} />
                 <col style={{ width: '110px' }} />
-                <col style={{ width: '100px' }} />
-                <col style={{ width: '115px' }} />
-                <col style={{ width: '95px' }} />
-                <col style={{ width: '95px' }} />
-                <col style={{ width: '95px' }} />
-                <col style={{ width: '52px' }} />
+                <col style={{ width: '90px' }} />
+                <col style={{ width: '90px' }} />
+                <col style={{ width: '90px' }} />
+                <col style={{ width: '50px' }} />
               </colgroup>
               <thead>
                 <tr>
@@ -423,6 +721,23 @@ export function InventoryView({
                         <div className="history-project-name">{h.project_name}</div>
                         {h.notes && (
                           <div className="table-subnote">{h.notes}</div>
+                        )}
+                        {h.multicolor_deductions && h.multicolor_deductions.length > 0 && (
+                          <div className="table-multicolor-row">
+                            {h.multicolor_deductions.map((d, idx) => (
+                              <span
+                                key={idx}
+                                className="table-multicolor-chip"
+                                title={`${d.spool_code || d.spool_id}: ${d.grams_used}g`}
+                              >
+                                <span
+                                  className="table-dot"
+                                  style={{ backgroundColor: d.color_hex || '#888' }}
+                                />
+                                {d.grams_used}g
+                              </span>
+                            ))}
+                          </div>
                         )}
                       </td>
                       <td>
@@ -619,6 +934,144 @@ export function InventoryView({
                 </button>
                 <button type="submit" className="btn-primary">
                   Save Spool
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Expense Modal */}
+      {isExpenseModalOpen && (
+        <div className="modal-backdrop" onClick={() => setIsExpenseModalOpen(false)}>
+          <div
+            className="modal-card"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="modal-header">
+              <h3 className="modal-title">Log Workshop Expense / Investment</h3>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={() => setIsExpenseModalOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveExpense} className="modal-body">
+              <div className="field-grid-2">
+                <div className="field-group">
+                  <label className="field-label">Date</label>
+                  <input
+                    type="date"
+                    className="field-input"
+                    value={expDate}
+                    onChange={(e) => setExpDate(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="field-group">
+                  <label className="field-label">Supplier / Platform</label>
+                  <input
+                    type="text"
+                    className="field-input"
+                    placeholder="e.g. Bambu Lab EU, Amazon, AliExpress"
+                    value={expSupplier}
+                    onChange={(e) => setExpSupplier(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="field-group">
+                <label className="field-label">Concept / Item Description</label>
+                <input
+                  type="text"
+                  className="field-input"
+                  placeholder="e.g. Creality Space Pi Plus Filament Dryer"
+                  value={expConcept}
+                  onChange={(e) => setExpConcept(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="field-grid-2">
+                <div className="field-group">
+                  <label className="field-label">Category</label>
+                  <select
+                    className="field-select"
+                    value={expCategory}
+                    onChange={(e) => setExpCategory(e.target.value)}
+                  >
+                    <option value="Machinery">Machinery (Printers, Dryers)</option>
+                    <option value="Materials">Materials &amp; Spools</option>
+                    <option value="Storage & Parts">Storage &amp; Parts (Boxes, PTFE, Bearings)</option>
+                    <option value="Furniture">Furniture &amp; Workshop Setup</option>
+                    <option value="Consumables">Consumables (Nozzles, Glue, IPA)</option>
+                    <option value="Maintenance">Maintenance &amp; Repairs</option>
+                    <option value="Other">Other Business Expense</option>
+                  </select>
+                </div>
+
+                <div className="field-group">
+                  <label className="field-label">Expense Classification</label>
+                  <div className="segmented-toggle-row">
+                    <button
+                      type="button"
+                      className={`segmented-btn ${expType === 'CapEx' ? 'is-active' : ''}`}
+                      onClick={() => setExpType('CapEx')}
+                    >
+                      CapEx (Capital)
+                    </button>
+                    <button
+                      type="button"
+                      className={`segmented-btn ${expType === 'OpEx' ? 'is-active' : ''}`}
+                      onClick={() => setExpType('OpEx')}
+                    >
+                      OpEx (Operational)
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="field-group">
+                <label className="field-label">Amount Incurred ({currencySymbol})</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  className="field-input font-mono"
+                  placeholder="0.00"
+                  value={expAmount || ''}
+                  onChange={(e) => setExpAmount(parseFloat(e.target.value) || 0)}
+                  required
+                />
+              </div>
+
+              <div className="field-group">
+                <label className="field-label">Notes (Optional)</label>
+                <input
+                  type="text"
+                  className="field-input"
+                  placeholder="e.g. 2-year warranty included, order #1928"
+                  value={expNotes}
+                  onChange={(e) => setExpNotes(e.target.value)}
+                />
+              </div>
+
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setIsExpenseModalOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary">
+                  Record Expense
                 </button>
               </div>
             </form>

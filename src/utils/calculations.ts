@@ -56,9 +56,19 @@ export function calculatePrintPrice(state: CalculatorState): CalculationResult {
   const totalPrintHours = printHours + printMinutes / 60;
   const totalLaborHours = (prepMinutes + postMinutes) / 60;
 
-  // 2. Material Cost (protected against divide-by-zero if spoolWeight is 0)
-  const baseMaterialCost =
-    spoolWeight > 0 ? (spoolPrice / spoolWeight) * modelWeight : 0;
+  // 2. Material Cost (supports single-material and AMS Lite multicolor)
+  let baseMaterialCost = 0;
+  if (state.multiColorSlots && state.multiColorSlots.length > 1) {
+    baseMaterialCost = state.multiColorSlots.reduce((acc, slot) => {
+      const price = slot.customSpoolPrice ?? spoolPrice;
+      const weight = slot.customSpoolWeight ?? spoolWeight;
+      const rate = weight > 0 ? price / weight : 0;
+      return acc + slot.usedGrams * rate;
+    }, 0);
+  } else {
+    baseMaterialCost =
+      spoolWeight > 0 ? (spoolPrice / spoolWeight) * modelWeight : 0;
+  }
   const materialCost = baseMaterialCost * (1 + failedMarkup / 100);
 
   // 3. Labor Cost (toggled via laborEnabled)

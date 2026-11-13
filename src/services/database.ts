@@ -1,7 +1,11 @@
 import type {
   CalculatorState,
+  ExpenseItem,
   FilamentSpool,
   JobHistoryRecord,
+  MulticolorDeductionRecord,
+  ProductTemplate,
+  PrintOpsBackup,
   WorkshopSettings,
 } from '../types/calculator';
 
@@ -12,7 +16,94 @@ const STORAGE_KEYS_SQL_FALLBACK = {
   SETTINGS: 'printops_settings_fallback_v1',
   SPOOLS: 'printops_spools_fallback_v1',
   HISTORY: 'printops_history_fallback_v1',
+  EXPENSES: 'printops_expenses_fallback_v1',
+  TEMPLATES: 'printops_templates_fallback_v1',
 };
+
+const INITIAL_EXPENSES_SEED: ExpenseItem[] = [
+  {
+    id: 'exp-1',
+    date: '2026-10-31',
+    supplier: 'Bambu Lab EU',
+    concept: 'Bambu Lab A1 Combo (con AMS Lite)',
+    category: 'Machinery',
+    expense_type: 'CapEx',
+    amount_eur: 344.7,
+    notes: 'Primary 3D printer with 4-color AMS Lite',
+  },
+  {
+    id: 'exp-2',
+    date: '2026-10-31',
+    supplier: 'Bambu Lab EU',
+    concept: '6x Bambu PETG Matte 1kg Spools',
+    category: 'Materials',
+    expense_type: 'CapEx',
+    amount_eur: 61.4,
+    notes: 'Initial material stock (6kg @ ~€10.23/kg)',
+  },
+  {
+    id: 'exp-3',
+    date: '2026-11-03',
+    supplier: 'AliExpress',
+    concept: 'Creality Space Pi Plus Filament Dryer',
+    category: 'Machinery',
+    expense_type: 'CapEx',
+    amount_eur: 67.99,
+    notes: 'Dual spool filament dryer & active heating',
+  },
+  {
+    id: 'exp-4',
+    date: '2026-11-10',
+    supplier: 'Amazon EU',
+    concept: 'ISOLATECH Silica Gel 900g + PTFE + PC4',
+    category: 'Storage & Parts',
+    expense_type: 'CapEx',
+    amount_eur: 21.48,
+    notes: 'Desiccant beads and pneumatic connectors',
+  },
+  {
+    id: 'exp-5',
+    date: '2026-11-10',
+    supplier: 'Amazon EU',
+    concept: 'Dry-Box System (6x 3.7L containers + hygrometers + 608ZZ)',
+    category: 'Storage & Parts',
+    expense_type: 'CapEx',
+    amount_eur: 53.97,
+    notes: 'Individual sealed airtight filament dry boxes with bearings',
+  },
+  {
+    id: 'exp-6',
+    date: '2026-11-11',
+    supplier: 'Wallapop',
+    concept: 'IKEA STUVA MALAD Workshop Cabinet',
+    category: 'Furniture',
+    expense_type: 'CapEx',
+    amount_eur: 15.15,
+    notes: 'Solid workshop stand / cabinet for A1 printer',
+  },
+];
+
+const INITIAL_TEMPLATES_SEED: ProductTemplate[] = [
+  {
+    id: 'tpl-1',
+    name: 'Bubble Candle Holder (3-Pack)',
+    default_spool_id: 'spool-1',
+    filament_type: 'PETG',
+    weight_g: 85.0,
+    print_hours: 2,
+    print_minutes: 45,
+    prep_minutes: 10,
+    post_minutes: 10,
+    batch_quantity: 3,
+    extra_hardware_json: JSON.stringify([
+      { id: 'item-1', name: 'LED Tea Lights (3x)', cost: 1.2 },
+      { id: 'item-2', name: 'Packaging Box & Ribbon', cost: 0.6 },
+    ]),
+    profit_markup: 35,
+    target_price_eur: 14.5,
+    created_at: new Date().toISOString(),
+  },
+];
 
 const INITIAL_SPOOLS_SEED: FilamentSpool[] = [
   {
@@ -196,7 +287,51 @@ export class DatabaseService {
             net_profit REAL NOT NULL,
             record_type TEXT NOT NULL,
             sales_channel TEXT NOT NULL,
+            notes TEXT,
+            multicolor_deductions_json TEXT
+          );
+        `);
+
+        // Migration safety: ensure multicolor_deductions_json column exists
+        try {
+          await db.execute(
+            'ALTER TABLE jobs_history ADD COLUMN multicolor_deductions_json TEXT;'
+          );
+        } catch {
+          // column already exists
+        }
+
+        // 4. Create expenses table (CapEx / OpEx ROI tracking)
+        await db.execute(`
+          CREATE TABLE IF NOT EXISTS expenses (
+            id TEXT PRIMARY KEY,
+            date TEXT NOT NULL,
+            supplier TEXT NOT NULL,
+            concept TEXT NOT NULL,
+            category TEXT NOT NULL,
+            expense_type TEXT NOT NULL,
+            amount_eur REAL NOT NULL,
             notes TEXT
+          );
+        `);
+
+        // 5. Create product_templates table
+        await db.execute(`
+          CREATE TABLE IF NOT EXISTS product_templates (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            default_spool_id TEXT,
+            filament_type TEXT NOT NULL,
+            weight_g REAL NOT NULL,
+            print_hours REAL NOT NULL,
+            print_minutes REAL NOT NULL,
+            prep_minutes REAL NOT NULL,
+            post_minutes REAL NOT NULL,
+            batch_quantity INTEGER NOT NULL,
+            extra_hardware_json TEXT,
+            profit_markup REAL NOT NULL,
+            target_price_eur REAL,
+            created_at TEXT NOT NULL
           );
         `);
 
@@ -250,6 +385,58 @@ export class DatabaseService {
             );
           }
         }
+
+        // Seed initial startup expenses if empty (Total CapEx = €564.69)
+        const expensesCount = await db.select<Array<{ count: number }>>(
+          'SELECT COUNT(*) as count FROM expenses;'
+        );
+        if (!expensesCount || expensesCount[0].count === 0) {
+          for (const exp of INITIAL_EXPENSES_SEED) {
+            await db.execute(
+              `INSERT INTO expenses (id, date, supplier, concept, category, expense_type, amount_eur, notes)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
+              [
+                exp.id,
+                exp.date,
+                exp.supplier,
+                exp.concept,
+                exp.category,
+                exp.expense_type,
+                exp.amount_eur,
+                exp.notes || '',
+              ]
+            );
+          }
+        }
+
+        // Seed product templates if empty
+        const templatesCount = await db.select<Array<{ count: number }>>(
+          'SELECT COUNT(*) as count FROM product_templates;'
+        );
+        if (!templatesCount || templatesCount[0].count === 0) {
+          for (const tpl of INITIAL_TEMPLATES_SEED) {
+            await db.execute(
+              `INSERT INTO product_templates (id, name, default_spool_id, filament_type, weight_g, print_hours, print_minutes, prep_minutes, post_minutes, batch_quantity, extra_hardware_json, profit_markup, target_price_eur, created_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14);`,
+              [
+                tpl.id,
+                tpl.name,
+                tpl.default_spool_id || '',
+                tpl.filament_type,
+                tpl.weight_g,
+                tpl.print_hours,
+                tpl.print_minutes,
+                tpl.prep_minutes,
+                tpl.post_minutes,
+                tpl.batch_quantity,
+                tpl.extra_hardware_json || '[]',
+                tpl.profit_markup,
+                tpl.target_price_eur || 0,
+                tpl.created_at,
+              ]
+            );
+          }
+        }
       } catch (err) {
         console.warn('SQLite init error in Tauri, falling back to local storage:', err);
         this.initBrowserFallback();
@@ -277,6 +464,18 @@ export class DatabaseService {
     }
     if (!localStorage.getItem(STORAGE_KEYS_SQL_FALLBACK.HISTORY)) {
       localStorage.setItem(STORAGE_KEYS_SQL_FALLBACK.HISTORY, JSON.stringify([]));
+    }
+    if (!localStorage.getItem(STORAGE_KEYS_SQL_FALLBACK.EXPENSES)) {
+      localStorage.setItem(
+        STORAGE_KEYS_SQL_FALLBACK.EXPENSES,
+        JSON.stringify(INITIAL_EXPENSES_SEED)
+      );
+    }
+    if (!localStorage.getItem(STORAGE_KEYS_SQL_FALLBACK.TEMPLATES)) {
+      localStorage.setItem(
+        STORAGE_KEYS_SQL_FALLBACK.TEMPLATES,
+        JSON.stringify(INITIAL_TEMPLATES_SEED)
+      );
     }
   }
 
@@ -455,6 +654,27 @@ export class DatabaseService {
     await this.updateSpool(updated);
   }
 
+  public async deductMultipleSpools(
+    deductions: Array<{ spoolId: string; grams: number }>
+  ): Promise<void> {
+    await this.init();
+    const spools = await this.getSpools();
+    const spoolMap = new Map(spools.map((s) => [s.id, s]));
+
+    for (const d of deductions) {
+      const spool = spoolMap.get(d.spoolId);
+      if (spool) {
+        const newWeight = Math.max(
+          0,
+          Math.round((spool.remaining_weight_g - d.grams) * 10) / 10
+        );
+        const updated = { ...spool, remaining_weight_g: newWeight };
+        await this.updateSpool(updated);
+        spoolMap.set(spool.id, updated);
+      }
+    }
+  }
+
   public async deleteSpool(id: string): Promise<void> {
     await this.init();
     const sqlMod = await getSql();
@@ -479,6 +699,191 @@ export class DatabaseService {
     }
   }
 
+  // --- BUSINESS EXPENSES (CAPEX / OPEX) ---
+  public async getExpenses(): Promise<ExpenseItem[]> {
+    await this.init();
+    const sqlMod = await getSql();
+    if (sqlMod) {
+      try {
+        const db = await sqlMod.default.load(DB_PATH);
+        const rows = await db.select<ExpenseItem[]>(
+          'SELECT * FROM expenses ORDER BY date DESC;'
+        );
+        if (rows) return rows;
+      } catch {
+        // fallback
+      }
+    }
+
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS_SQL_FALLBACK.EXPENSES);
+      if (raw) return JSON.parse(raw);
+    } catch {
+      // ignore
+    }
+    return INITIAL_EXPENSES_SEED;
+  }
+
+  public async addExpense(expense: ExpenseItem): Promise<void> {
+    await this.init();
+    const sqlMod = await getSql();
+    if (sqlMod) {
+      try {
+        const db = await sqlMod.default.load(DB_PATH);
+        await db.execute(
+          `INSERT INTO expenses (id, date, supplier, concept, category, expense_type, amount_eur, notes)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
+          [
+            expense.id,
+            expense.date,
+            expense.supplier,
+            expense.concept,
+            expense.category,
+            expense.expense_type,
+            expense.amount_eur,
+            expense.notes || '',
+          ]
+        );
+      } catch (err) {
+        console.warn('Failed to add expense in SQLite:', err);
+      }
+    }
+
+    try {
+      const current = await this.getExpenses();
+      const updated = [expense, ...current];
+      localStorage.setItem(
+        STORAGE_KEYS_SQL_FALLBACK.EXPENSES,
+        JSON.stringify(updated)
+      );
+    } catch {
+      // ignore
+    }
+  }
+
+  public async deleteExpense(id: string): Promise<void> {
+    await this.init();
+    const sqlMod = await getSql();
+    if (sqlMod) {
+      try {
+        const db = await sqlMod.default.load(DB_PATH);
+        await db.execute('DELETE FROM expenses WHERE id = $1;', [id]);
+      } catch (err) {
+        console.warn('Failed to delete expense in SQLite:', err);
+      }
+    }
+
+    try {
+      const current = await this.getExpenses();
+      const updated = current.filter((e) => e.id !== id);
+      localStorage.setItem(
+        STORAGE_KEYS_SQL_FALLBACK.EXPENSES,
+        JSON.stringify(updated)
+      );
+    } catch {
+      // ignore
+    }
+  }
+
+  // --- PRODUCT TEMPLATES ("RECIPES") ---
+  public async getProductTemplates(): Promise<ProductTemplate[]> {
+    await this.init();
+    const sqlMod = await getSql();
+    if (sqlMod) {
+      try {
+        const db = await sqlMod.default.load(DB_PATH);
+        const rows = await db.select<ProductTemplate[]>(
+          'SELECT * FROM product_templates ORDER BY name ASC;'
+        );
+        if (rows) return rows;
+      } catch {
+        // fallback
+      }
+    }
+
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS_SQL_FALLBACK.TEMPLATES);
+      if (raw) return JSON.parse(raw);
+    } catch {
+      // ignore
+    }
+    return INITIAL_TEMPLATES_SEED;
+  }
+
+  public async saveProductTemplate(template: ProductTemplate): Promise<void> {
+    await this.init();
+    const sqlMod = await getSql();
+    if (sqlMod) {
+      try {
+        const db = await sqlMod.default.load(DB_PATH);
+        // Replace or insert
+        await db.execute('DELETE FROM product_templates WHERE id = $1;', [
+          template.id,
+        ]);
+        await db.execute(
+          `INSERT INTO product_templates (id, name, default_spool_id, filament_type, weight_g, print_hours, print_minutes, prep_minutes, post_minutes, batch_quantity, extra_hardware_json, profit_markup, target_price_eur, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14);`,
+          [
+            template.id,
+            template.name,
+            template.default_spool_id || '',
+            template.filament_type,
+            template.weight_g,
+            template.print_hours,
+            template.print_minutes,
+            template.prep_minutes,
+            template.post_minutes,
+            template.batch_quantity,
+            template.extra_hardware_json || '[]',
+            template.profit_markup,
+            template.target_price_eur || 0,
+            template.created_at,
+          ]
+        );
+      } catch (err) {
+        console.warn('Failed to save product template in SQLite:', err);
+      }
+    }
+
+    try {
+      const current = await this.getProductTemplates();
+      const updated = [
+        template,
+        ...current.filter((t) => t.id !== template.id),
+      ];
+      localStorage.setItem(
+        STORAGE_KEYS_SQL_FALLBACK.TEMPLATES,
+        JSON.stringify(updated)
+      );
+    } catch {
+      // ignore
+    }
+  }
+
+  public async deleteProductTemplate(id: string): Promise<void> {
+    await this.init();
+    const sqlMod = await getSql();
+    if (sqlMod) {
+      try {
+        const db = await sqlMod.default.load(DB_PATH);
+        await db.execute('DELETE FROM product_templates WHERE id = $1;', [id]);
+      } catch (err) {
+        console.warn('Failed to delete product template in SQLite:', err);
+      }
+    }
+
+    try {
+      const current = await this.getProductTemplates();
+      const updated = current.filter((t) => t.id !== id);
+      localStorage.setItem(
+        STORAGE_KEYS_SQL_FALLBACK.TEMPLATES,
+        JSON.stringify(updated)
+      );
+    } catch {
+      // ignore
+    }
+  }
+
   // --- JOBS & SALES HISTORY ---
   public async getHistory(): Promise<JobHistoryRecord[]> {
     await this.init();
@@ -486,13 +891,30 @@ export class DatabaseService {
     if (sqlMod) {
       try {
         const db = await sqlMod.default.load(DB_PATH);
-        const rows = await db.select<JobHistoryRecord[]>(
+        const rows = await db.select<
+          Array<JobHistoryRecord & { multicolor_deductions_json?: string }>
+        >(
           `SELECT h.*, s.code as spool_code, s.color_name as spool_color_name, s.color_hex as spool_color_hex
            FROM jobs_history h
            LEFT JOIN spools s ON h.spool_id = s.id
            ORDER BY h.date DESC;`
         );
-        if (rows) return rows;
+        if (rows) {
+          return rows.map((r) => {
+            let deductions: MulticolorDeductionRecord[] | undefined = undefined;
+            if (r.multicolor_deductions_json) {
+              try {
+                deductions = JSON.parse(r.multicolor_deductions_json);
+              } catch {
+                // ignore
+              }
+            }
+            return {
+              ...r,
+              multicolor_deductions: deductions,
+            };
+          });
+        }
       } catch {
         // fallback
       }
@@ -521,13 +943,17 @@ export class DatabaseService {
 
   public async logJob(job: JobHistoryRecord): Promise<void> {
     await this.init();
+    const deductionsJson = job.multicolor_deductions
+      ? JSON.stringify(job.multicolor_deductions)
+      : null;
+
     const sqlMod = await getSql();
     if (sqlMod) {
       try {
         const db = await sqlMod.default.load(DB_PATH);
         await db.execute(
-          `INSERT INTO jobs_history (id, date, project_name, spool_id, grams_used, print_minutes, quantity, production_cost, selling_price, net_profit, record_type, sales_channel, notes)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13);`,
+          `INSERT INTO jobs_history (id, date, project_name, spool_id, grams_used, print_minutes, quantity, production_cost, selling_price, net_profit, record_type, sales_channel, notes, multicolor_deductions_json)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14);`,
           [
             job.id,
             job.date,
@@ -542,6 +968,7 @@ export class DatabaseService {
             job.record_type,
             job.sales_channel,
             job.notes || '',
+            deductionsJson,
           ]
         );
       } catch (err) {
@@ -579,6 +1006,194 @@ export class DatabaseService {
       localStorage.setItem(
         STORAGE_KEYS_SQL_FALLBACK.HISTORY,
         JSON.stringify(updated)
+      );
+    } catch {
+      // ignore
+    }
+  }
+
+  // --- 1-CLICK MASTER BACKUP EXPORT & RESTORE ---
+  public async exportFullBackup(): Promise<PrintOpsBackup> {
+    await this.init();
+    const [settings, spools, expenses, product_templates, jobs_history] =
+      await Promise.all([
+        this.getSettings(),
+        this.getSpools(),
+        this.getExpenses(),
+        this.getProductTemplates(),
+        this.getHistory(),
+      ]);
+
+    return {
+      version: '2.0',
+      app_name: 'PrintOps 3D',
+      export_date: new Date().toISOString(),
+      settings,
+      spools,
+      expenses,
+      product_templates,
+      jobs_history,
+    };
+  }
+
+  public async restoreFullBackup(backup: PrintOpsBackup): Promise<void> {
+    if (!backup || !backup.settings || !Array.isArray(backup.spools)) {
+      throw new Error('Invalid PrintOps backup file structure.');
+    }
+
+    await this.init();
+    const sqlMod = await getSql();
+
+    if (sqlMod) {
+      try {
+        const db = await sqlMod.default.load(DB_PATH);
+
+        // 1. Settings
+        await db.execute('DELETE FROM settings;');
+        const s = backup.settings;
+        await db.execute(
+          `INSERT INTO settings (id, currency, electricity_rate, labor_rate, packaging_cost, default_markup, failure_buffer, selected_printer_id, printer_price, printer_power_w, daily_usage_hours, roi_years, repair_pct)
+           VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);`,
+          [
+            s.currency,
+            s.electricity_rate,
+            s.labor_rate,
+            s.packaging_cost,
+            s.default_markup,
+            s.failure_buffer,
+            s.selected_printer_id || '',
+            s.printer_price,
+            s.printer_power_w,
+            s.daily_usage_hours,
+            s.roi_years,
+            s.repair_pct,
+          ]
+        );
+
+        // 2. Spools
+        await db.execute('DELETE FROM spools;');
+        for (const sp of backup.spools) {
+          await db.execute(
+            `INSERT INTO spools (id, code, brand, material, color_name, color_hex, initial_weight_g, remaining_weight_g, spool_price, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`,
+            [
+              sp.id,
+              sp.code,
+              sp.brand,
+              sp.material,
+              sp.color_name,
+              sp.color_hex,
+              sp.initial_weight_g,
+              sp.remaining_weight_g,
+              sp.spool_price,
+              sp.created_at || new Date().toISOString(),
+            ]
+          );
+        }
+
+        // 3. Expenses
+        await db.execute('DELETE FROM expenses;');
+        if (Array.isArray(backup.expenses)) {
+          for (const exp of backup.expenses) {
+            await db.execute(
+              `INSERT INTO expenses (id, date, supplier, concept, category, expense_type, amount_eur, notes)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
+              [
+                exp.id,
+                exp.date,
+                exp.supplier,
+                exp.concept,
+                exp.category,
+                exp.expense_type,
+                exp.amount_eur,
+                exp.notes || '',
+              ]
+            );
+          }
+        }
+
+        // 4. Product Templates
+        await db.execute('DELETE FROM product_templates;');
+        if (Array.isArray(backup.product_templates)) {
+          for (const tpl of backup.product_templates) {
+            await db.execute(
+              `INSERT INTO product_templates (id, name, default_spool_id, filament_type, weight_g, print_hours, print_minutes, prep_minutes, post_minutes, batch_quantity, extra_hardware_json, profit_markup, target_price_eur, created_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14);`,
+              [
+                tpl.id,
+                tpl.name,
+                tpl.default_spool_id || '',
+                tpl.filament_type,
+                tpl.weight_g,
+                tpl.print_hours,
+                tpl.print_minutes,
+                tpl.prep_minutes,
+                tpl.post_minutes,
+                tpl.batch_quantity,
+                tpl.extra_hardware_json || '[]',
+                tpl.profit_markup,
+                tpl.target_price_eur || 0,
+                tpl.created_at,
+              ]
+            );
+          }
+        }
+
+        // 5. Jobs History
+        await db.execute('DELETE FROM jobs_history;');
+        if (Array.isArray(backup.jobs_history)) {
+          for (const job of backup.jobs_history) {
+            const deductionsJson = job.multicolor_deductions
+              ? JSON.stringify(job.multicolor_deductions)
+              : null;
+            await db.execute(
+              `INSERT INTO jobs_history (id, date, project_name, spool_id, grams_used, print_minutes, quantity, production_cost, selling_price, net_profit, record_type, sales_channel, notes, multicolor_deductions_json)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14);`,
+              [
+                job.id,
+                job.date,
+                job.project_name,
+                job.spool_id,
+                job.grams_used,
+                job.print_minutes,
+                job.quantity,
+                job.production_cost,
+                job.selling_price,
+                job.net_profit,
+                job.record_type,
+                job.sales_channel,
+                job.notes || '',
+                deductionsJson,
+              ]
+            );
+          }
+        }
+      } catch (err) {
+        console.warn('SQLite restore error, syncing to local storage:', err);
+      }
+    }
+
+    // Sync to browser fallback storage
+    try {
+      localStorage.setItem(
+        STORAGE_KEYS_SQL_FALLBACK.SETTINGS,
+        JSON.stringify(backup.settings)
+      );
+      localStorage.setItem(
+        STORAGE_KEYS_SQL_FALLBACK.SPOOLS,
+        JSON.stringify(backup.spools)
+      );
+      localStorage.setItem(
+        STORAGE_KEYS_SQL_FALLBACK.EXPENSES,
+        JSON.stringify(backup.expenses || [])
+      );
+      localStorage.setItem(
+        STORAGE_KEYS_SQL_FALLBACK.TEMPLATES,
+        JSON.stringify(backup.product_templates || [])
+      );
+      localStorage.setItem(
+        STORAGE_KEYS_SQL_FALLBACK.HISTORY,
+        JSON.stringify(backup.jobs_history || [])
       );
     } catch {
       // ignore

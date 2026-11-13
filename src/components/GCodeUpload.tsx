@@ -1,5 +1,6 @@
 import { AlertCircle, Check, Loader2, UploadCloud } from 'lucide-react';
 import { useRef, useState } from 'react';
+import type { FilamentSlotUsage } from '../types/calculator';
 import { parseUploadedSlicedFile } from '../utils/gcodeParser';
 
 interface GCodeUploadProps {
@@ -9,6 +10,7 @@ interface GCodeUploadProps {
     weight: number;
     slicer?: string;
     projectName?: string;
+    filamentSlots?: FilamentSlotUsage[];
   }) => void;
 }
 
@@ -38,6 +40,7 @@ export function GCodeUpload({ onAutofill }: GCodeUploadProps) {
           weight: parsed.modelWeight,
           slicer: parsed.slicerDetected,
           projectName: parsed.projectName,
+          filamentSlots: parsed.filamentSlots,
         });
       } else if (parsed.isUnsliced3mf) {
         setStatusType('warning');

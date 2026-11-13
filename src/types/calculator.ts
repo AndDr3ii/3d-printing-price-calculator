@@ -22,6 +22,9 @@ export interface CalculatorState {
   // Selected spool id from inventory (optional)
   selectedSpoolId?: string;
 
+  // AMS Lite Multi-Color Slot assignments (when 2-4 slots detected)
+  multiColorSlots?: FilamentSlotAssignment[];
+
   // Section 1: Filament / Material
   currency: CurrencyCode;
   filamentType: FilamentType;
@@ -153,6 +156,14 @@ export interface FilamentSpool {
 export type RecordType = 'sale' | 'print_only';
 export type SalesChannel = 'Vinted' | 'Wallapop' | 'Etsy' | 'Direct' | 'Internal' | 'Other';
 
+export interface MulticolorDeductionRecord {
+  spool_id: string;
+  spool_code?: string;
+  color_name?: string;
+  color_hex?: string;
+  grams_used: number;
+}
+
 export interface JobHistoryRecord {
   id: string;
   date: string;
@@ -170,4 +181,67 @@ export interface JobHistoryRecord {
   record_type: RecordType;
   sales_channel: SalesChannel;
   notes?: string;
+  multicolor_deductions?: MulticolorDeductionRecord[];
+}
+
+/* ==========================================================
+   PRINTOPS 3D V2.0: EXPENSES, TEMPLATES & MULTICOLOR
+   ========================================================== */
+
+export type ExpenseType = 'CapEx' | 'OpEx';
+
+export interface ExpenseItem {
+  id: string;
+  date: string;
+  supplier: string;
+  concept: string;
+  category: string;
+  expense_type: ExpenseType;
+  amount_eur: number;
+  notes?: string;
+}
+
+export interface FilamentSlotUsage {
+  id: number; // 1, 2, 3, 4
+  type: string;
+  color: string;
+  usedGrams: number;
+}
+
+export interface FilamentSlotAssignment {
+  slotId: number;
+  type: string;
+  color: string;
+  usedGrams: number;
+  assignedSpoolId?: string; // ID of FilamentSpool in database, or undefined for custom
+  customSpoolPrice?: number;
+  customSpoolWeight?: number;
+}
+
+export interface ProductTemplate {
+  id: string;
+  name: string;
+  default_spool_id?: string;
+  filament_type: FilamentType;
+  weight_g: number;
+  print_hours: number;
+  print_minutes: number;
+  prep_minutes: number;
+  post_minutes: number;
+  batch_quantity: number;
+  extra_hardware_json?: string; // JSON string of ExtraCostItem[]
+  profit_markup: number;
+  target_price_eur?: number;
+  created_at: string;
+}
+
+export interface PrintOpsBackup {
+  version: string;
+  app_name: string;
+  export_date: string;
+  settings: WorkshopSettings;
+  spools: FilamentSpool[];
+  expenses: ExpenseItem[];
+  product_templates: ProductTemplate[];
+  jobs_history: JobHistoryRecord[];
 }
