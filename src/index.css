@@ -2064,6 +2064,99 @@ body {
 }
 
 /* =========================================
+   CONFIRM DELETE MODAL (APPLE-INSPIRED)
+   ========================================= */
+.confirm-modal-card {
+  max-width: 440px;
+  border-radius: 18px;
+  padding: 1.5rem;
+  gap: 1.25rem;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+}
+
+.confirm-modal-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.confirm-icon-badge {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  display: grid;
+  place-items: center;
+}
+
+.confirm-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.confirm-modal-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--text-primary);
+}
+
+.confirm-modal-desc {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.confirm-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding-top: 0.5rem;
+}
+
+.confirm-cancel-btn {
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.confirm-delete-btn,
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: #dc2626;
+  color: #ffffff;
+  border: 1px solid #b91c1c;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 3px rgba(220, 38, 38, 0.3);
+}
+
+.confirm-delete-btn:hover,
+.btn-danger:hover {
+  background: #b91c1c;
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.45);
+  transform: translateY(-0.5px);
+}
+
+.confirm-delete-btn:active,
+.btn-danger:active {
+  transform: scale(0.97);
+}
+
+/* =========================================
    INVENTORY & SALES HISTORY VIEW
    ========================================= */
 .inventory-container {

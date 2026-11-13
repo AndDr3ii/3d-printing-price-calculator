@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import { CURRENCIES } from '../constants/defaults';
+import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 import type {
   CurrencyCode,
   ExpenseItem,
@@ -121,6 +122,11 @@ export function InventoryView({
   const [expType, setExpType] = useState<ExpenseType>('CapEx');
   const [expAmount, setExpAmount] = useState<number>(0);
   const [expNotes, setExpNotes] = useState('');
+
+  // Confirm Delete Modal States
+  const [spoolToDelete, setSpoolToDelete] = useState<FilamentSpool | null>(null);
+  const [expenseToDelete, setExpenseToDelete] = useState<ExpenseItem | null>(null);
+  const [historyItemToDelete, setHistoryItemToDelete] = useState<JobHistoryRecord | null>(null);
 
   const openAddSpoolModal = () => {
     const nextIndex = spools.length + 1;
@@ -504,11 +510,7 @@ export function InventoryView({
                       type="button"
                       className="btn-icon-subtle btn-delete"
                       title="Delete spool"
-                      onClick={() => {
-                        if (confirm(`Delete spool ${sp.code} (${sp.color_name})?`)) {
-                          onDeleteSpool(sp.id);
-                        }
-                      }}
+                      onClick={() => setSpoolToDelete(sp)}
                     >
                       <Trash2 size={15} />
                     </button>
@@ -630,11 +632,7 @@ export function InventoryView({
                         type="button"
                         className="btn-icon-subtle btn-delete"
                         title="Delete expense"
-                        onClick={() => {
-                          if (confirm(`Delete expense "${exp.concept}"?`)) {
-                            onDeleteExpense(exp.id);
-                          }
-                        }}
+                        onClick={() => setExpenseToDelete(exp)}
                       >
                         <Trash2 size={14} />
                       </button>
@@ -774,12 +772,8 @@ export function InventoryView({
                         <button
                           type="button"
                           className="btn-icon-subtle btn-delete"
-                          title="Delete history record"
-                          onClick={() => {
-                            if (confirm('Delete this history record? (Filament will not be returned automatically)')) {
-                              onDeleteHistoryItem(h.id);
-                            }
-                          }}
+                          title="Delete history record & restore stock"
+                          onClick={() => setHistoryItemToDelete(h)}
                         >
                           <Trash2 size={14} />
                         </button>
@@ -1078,6 +1072,66 @@ export function InventoryView({
           </div>
         </div>
       )}
+
+      {/* Confirm Delete Spool Modal */}
+      <ConfirmDeleteModal
+        isOpen={Boolean(spoolToDelete)}
+        title="Delete Filament Spool"
+        message={
+          spoolToDelete
+            ? `Are you sure you want to delete spool ${spoolToDelete.code} (${spoolToDelete.brand} ${spoolToDelete.material} ${spoolToDelete.color_name})? This action cannot be undone.`
+            : ''
+        }
+        confirmLabel="Delete Spool"
+        onConfirm={async () => {
+          if (spoolToDelete) {
+            await onDeleteSpool(spoolToDelete.id);
+            setSpoolToDelete(null);
+          }
+        }}
+        onClose={() => setSpoolToDelete(null)}
+      />
+
+      {/* Confirm Delete Expense Modal */}
+      <ConfirmDeleteModal
+        isOpen={Boolean(expenseToDelete)}
+        title="Delete Expense"
+        message={
+          expenseToDelete
+            ? `Are you sure you want to delete "${expenseToDelete.concept}" (${currencySymbol}${expenseToDelete.amount_eur.toFixed(2)})? This will remove it from your workshop CapEx/OpEx and amortization calculations.`
+            : ''
+        }
+        confirmLabel="Delete Expense"
+        onConfirm={async () => {
+          if (expenseToDelete) {
+            await onDeleteExpense(expenseToDelete.id);
+            setExpenseToDelete(null);
+          }
+        }}
+        onClose={() => setExpenseToDelete(null)}
+      />
+
+      {/* Confirm Delete History Record Modal with Stock Restoration */}
+      <ConfirmDeleteModal
+        isOpen={Boolean(historyItemToDelete)}
+        title="Delete Print & Sales History Record"
+        message={
+          historyItemToDelete
+            ? historyItemToDelete.multicolor_deductions &&
+              historyItemToDelete.multicolor_deductions.length > 1
+              ? `Deleting this record will also restore ${historyItemToDelete.grams_used}g back across ${historyItemToDelete.multicolor_deductions.length} spools in your workshop inventory.`
+              : `Deleting this record will also restore ${historyItemToDelete.grams_used}g back to ${historyItemToDelete.spool_color_name || historyItemToDelete.spool_code || 'spool'}.`
+            : ''
+        }
+        confirmLabel="Delete & Restore Stock"
+        onConfirm={async () => {
+          if (historyItemToDelete) {
+            await onDeleteHistoryItem(historyItemToDelete.id);
+            setHistoryItemToDelete(null);
+          }
+        }}
+        onClose={() => setHistoryItemToDelete(null)}
+      />
     </div>
   );
 }

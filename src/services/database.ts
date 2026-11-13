@@ -288,14 +288,22 @@ export class DatabaseService {
             record_type TEXT NOT NULL,
             sales_channel TEXT NOT NULL,
             notes TEXT,
-            multicolor_deductions_json TEXT
+            multicolor_deductions_json TEXT,
+            deductions_json TEXT
           );
         `);
 
-        // Migration safety: ensure multicolor_deductions_json column exists
+        // Migration safety: ensure multicolor_deductions_json & deductions_json columns exist
         try {
           await db.execute(
             'ALTER TABLE jobs_history ADD COLUMN multicolor_deductions_json TEXT;'
+          );
+        } catch {
+          // column already exists
+        }
+        try {
+          await db.execute(
+            'ALTER TABLE jobs_history ADD COLUMN deductions_json TEXT;'
           );
         } catch {
           // column already exists
@@ -892,7 +900,7 @@ export class DatabaseService {
       try {
         const db = await sqlMod.default.load(DB_PATH);
         const rows = await db.select<
-          Array<JobHistoryRecord & { multicolor_deductions_json?: string }>
+          Array<JobHistoryRecord & { multicolor_deductions_json?: string; deductions_json?: string }>
         >(
           `SELECT h.*, s.code as spool_code, s.color_name as spool_color_name, s.color_hex as spool_color_hex
            FROM jobs_history h
@@ -902,9 +910,10 @@ export class DatabaseService {
         if (rows) {
           return rows.map((r) => {
             let deductions: MulticolorDeductionRecord[] | undefined = undefined;
-            if (r.multicolor_deductions_json) {
+            const rawJson = r.multicolor_deductions_json || r.deductions_json;
+            if (rawJson) {
               try {
-                deductions = JSON.parse(r.multicolor_deductions_json);
+                deductions = JSON.parse(rawJson);
               } catch {
                 // ignore
               }
@@ -952,8 +961,8 @@ export class DatabaseService {
       try {
         const db = await sqlMod.default.load(DB_PATH);
         await db.execute(
-          `INSERT INTO jobs_history (id, date, project_name, spool_id, grams_used, print_minutes, quantity, production_cost, selling_price, net_profit, record_type, sales_channel, notes, multicolor_deductions_json)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14);`,
+          `INSERT INTO jobs_history (id, date, project_name, spool_id, grams_used, print_minutes, quantity, production_cost, selling_price, net_profit, record_type, sales_channel, notes, multicolor_deductions_json, deductions_json)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15);`,
           [
             job.id,
             job.date,
@@ -968,6 +977,7 @@ export class DatabaseService {
             job.record_type,
             job.sales_channel,
             job.notes || '',
+            deductionsJson,
             deductionsJson,
           ]
         );
@@ -988,8 +998,53 @@ export class DatabaseService {
     }
   }
 
+  /**
+   * Refunds consumed filament grams back to the corresponding physical spool,
+   * clamping the remaining weight at initial_weight_g.
+   */
+  public async refundSpoolWeight(spoolId: string, gramsToRefund: number): Promise<void> {
+    await this.init();
+    const spools = await this.getSpools();
+    const target = spools.find((s) => s.id === spoolId);
+    if (!target) return;
+
+    const maxWeight = target.initial_weight_g || 1000;
+    const newWeight = Math.min(
+      maxWeight,
+      Math.round(((target.remaining_weight_g ?? 0) + gramsToRefund) * 10) / 10
+    );
+    const updated = { ...target, remaining_weight_g: newWeight };
+    await this.updateSpool(updated);
+  }
+
+  /**
+   * Deletes a print/sale history record and automatically restores the consumed
+   * filament stock back to the corresponding spool(s).
+   */
   public async deleteHistoryItem(id: string): Promise<void> {
     await this.init();
+
+    // 1. Fetch the job record before deleting it so we can restore filament stock
+    const currentHistory = await this.getHistory();
+    const targetJob = currentHistory.find((h) => h.id === id);
+
+    // 2. Restore/add grams_used back to the corresponding spool(s)
+    if (targetJob) {
+      if (
+        targetJob.multicolor_deductions &&
+        targetJob.multicolor_deductions.length > 0
+      ) {
+        for (const deduction of targetJob.multicolor_deductions) {
+          if (deduction.spool_id && deduction.grams_used > 0) {
+            await this.refundSpoolWeight(deduction.spool_id, deduction.grams_used);
+          }
+        }
+      } else if (targetJob.spool_id && targetJob.grams_used > 0) {
+        await this.refundSpoolWeight(targetJob.spool_id, targetJob.grams_used);
+      }
+    }
+
+    // 3. Delete the row from SQLite
     const sqlMod = await getSql();
     if (sqlMod) {
       try {
@@ -1000,9 +1055,9 @@ export class DatabaseService {
       }
     }
 
+    // 4. Delete the row from localStorage fallback
     try {
-      const current = await this.getHistory();
-      const updated = current.filter((h) => h.id !== id);
+      const updated = currentHistory.filter((h) => h.id !== id);
       localStorage.setItem(
         STORAGE_KEYS_SQL_FALLBACK.HISTORY,
         JSON.stringify(updated)
@@ -1010,6 +1065,13 @@ export class DatabaseService {
     } catch {
       // ignore
     }
+  }
+
+  /**
+   * Alias for deleteHistoryItem(id)
+   */
+  public async deleteJob(id: string): Promise<void> {
+    return this.deleteHistoryItem(id);
   }
 
   // --- 1-CLICK MASTER BACKUP EXPORT & RESTORE ---

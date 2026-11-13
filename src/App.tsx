@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { CollapsibleSection } from './components/CollapsibleSection';
+import { ConfirmDeleteModal } from './components/ConfirmDeleteModal';
 import { DynamicOtherCosts } from './components/DynamicOtherCosts';
 import { GCodeUpload } from './components/GCodeUpload';
 import { InventoryView } from './components/InventoryView';
@@ -133,6 +134,7 @@ export function App() {
   const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
   const [productTemplates, setProductTemplates] = useState<ProductTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+  const [recipeToDelete, setRecipeToDelete] = useState<ProductTemplate | null>(null);
 
   // Save Template Modal State
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
@@ -432,10 +434,11 @@ export function App() {
       }
     }
 
+    const hasParsedTime = data.hours > 0 || data.minutes > 0;
+
     setState((prev) => ({
       ...prev,
-      printHours: data.hours,
-      printMinutes: data.minutes,
+      ...(hasParsedTime ? { printHours: data.hours, printMinutes: data.minutes } : {}),
       ...(data.weight > 0 ? { modelWeight: data.weight } : {}),
       ...(data.projectName ? { jobName: data.projectName } : {}),
       multiColorSlots: multiSlots,
@@ -735,9 +738,10 @@ export function App() {
                             className="btn-icon-subtle btn-delete"
                             title="Delete this saved recipe"
                             onClick={() => {
-                              if (confirm('Delete this saved product recipe?')) {
-                                handleDeleteProductTemplate(selectedTemplateId);
-                              }
+                              const tmpl = productTemplates.find(
+                                (t) => t.id === selectedTemplateId
+                              );
+                              if (tmpl) setRecipeToDelete(tmpl);
                             }}
                           >
                             <Trash2 size={14} />
@@ -1518,6 +1522,25 @@ export function App() {
           </div>
         </div>
       )}
+
+      {/* Confirm Delete Recipe Modal */}
+      <ConfirmDeleteModal
+        isOpen={Boolean(recipeToDelete)}
+        title="Delete Product Recipe"
+        message={
+          recipeToDelete
+            ? `Are you sure you want to delete saved recipe "${recipeToDelete.name}"? This action cannot be undone.`
+            : ''
+        }
+        confirmLabel="Delete Recipe"
+        onConfirm={async () => {
+          if (recipeToDelete) {
+            await handleDeleteProductTemplate(recipeToDelete.id);
+            setRecipeToDelete(null);
+          }
+        }}
+        onClose={() => setRecipeToDelete(null)}
+      />
 
       {/* Floating Toast Notification */}
       {toastMessage && (
