@@ -11,7 +11,7 @@ interface NumberFieldProps {
   suffix?: string;
   min?: number;
   max?: number;
-  step?: number;
+  step?: number | string;
   isInteger?: boolean;
   showSlider?: boolean;
   sliderMax?: number;
@@ -28,12 +28,13 @@ export function NumberField({
   suffix,
   min = 0,
   max,
-  step = 1,
+  step,
   isInteger = false,
   showSlider = false,
   sliderMax = 100,
   hint,
 }: NumberFieldProps) {
+  const effectiveStep = step !== undefined ? step : isInteger ? 1 : 'any';
   const [draft, setDraft] = useState<string>(
     Number.isFinite(value) ? String(value) : '0'
   );
@@ -103,7 +104,7 @@ export function NumberField({
           value={displayValue}
           min={min}
           max={max}
-          step={step}
+          step={effectiveStep}
           onFocus={() => {
             setDraft(Number.isFinite(value) ? String(value) : '');
             setIsFocused(true);
@@ -125,7 +126,7 @@ export function NumberField({
             className="field-slider"
             min={min}
             max={Math.max(sliderMax, Number.isFinite(value) ? value : min)}
-            step={step}
+            step={typeof step === 'number' ? step : 1}
             value={Number.isFinite(value) ? value : min}
             onChange={(e) => {
               const next = parseFloat(e.target.value);

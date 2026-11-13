@@ -88,7 +88,7 @@ export function DynamicOtherCosts({
                 <input
                   type="number"
                   inputMode="decimal"
-                  step="0.1"
+                  step="any"
                   min="0"
                   className="field-input has-prefix"
                   placeholder="0.00"

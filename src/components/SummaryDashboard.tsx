@@ -150,7 +150,7 @@ export function SummaryDashboard({
               className="field-input vat-input"
               min="0"
               max="100"
-              step="1"
+              step="any"
               value={state.vatPercent}
               onChange={(e) => {
                 const val = parseFloat(e.target.value);

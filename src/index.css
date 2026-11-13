@@ -2062,6 +2062,15 @@ body {
   gap: 0.75rem;
 }
 
+.modal-body .modal-footer {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+  padding-left: 0;
+  padding-right: 0;
+  padding-bottom: 0;
+}
+
 /* =========================================
    CONFIRM DELETE MODAL (APPLE-INSPIRED)
    ========================================= */

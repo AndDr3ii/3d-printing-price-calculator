@@ -129,14 +129,22 @@ export function InventoryView({
   const [historyItemToDelete, setHistoryItemToDelete] = useState<JobHistoryRecord | null>(null);
 
   const openAddSpoolModal = () => {
-    const nextIndex = spools.length + 1;
+    let maxNum = 0;
+    spools.forEach((s) => {
+      const match = s.code.match(/FIL-(\d+)/i);
+      if (match) {
+        const val = parseInt(match[1], 10);
+        if (!isNaN(val) && val > maxNum) maxNum = val;
+      }
+    });
+    const nextIndex = Math.max(spools.length + 1, maxNum + 1);
     const padded = String(nextIndex).padStart(3, '0');
     setEditingSpool(null);
     setFormCode(`FIL-${padded}`);
     setFormBrand('Bambu Lab');
     setFormMaterial('PETG Matte');
     setFormColorName('');
-    setFormColorHex('#71717A');
+    setFormColorHex('#F4F4F5');
     setFormInitialWeight(1000);
     setFormRemainingWeight(1000);
     setFormPrice(10.23);
@@ -881,7 +889,7 @@ export function InventoryView({
                   <label className="field-label">Spool Price ({currencySymbol})</label>
                   <input
                     type="number"
-                    step="0.01"
+                    step="any"
                     min="0"
                     className="field-input"
                     value={formPrice}
@@ -896,11 +904,11 @@ export function InventoryView({
                   <label className="field-label">Initial Weight (g)</label>
                   <input
                     type="number"
-                    step="10"
-                    min="1"
+                    step="any"
+                    min="0"
                     className="field-input"
                     value={formInitialWeight}
-                    onChange={(e) => setFormInitialWeight(parseFloat(e.target.value) || 1000)}
+                    onChange={(e) => setFormInitialWeight(parseFloat(e.target.value) || 0)}
                     required
                   />
                 </div>
@@ -908,7 +916,7 @@ export function InventoryView({
                   <label className="field-label">Remaining Weight (g)</label>
                   <input
                     type="number"
-                    step="1"
+                    step="any"
                     min="0"
                     className="field-input"
                     value={formRemainingWeight}
@@ -918,7 +926,14 @@ export function InventoryView({
                 </div>
               </div>
 
-              <div className="modal-footer">
+              <div
+                className="modal-footer"
+                style={{
+                  marginTop: '20px',
+                  paddingTop: '16px',
+                  borderTop: '1px solid var(--border-color)',
+                }}
+              >
                 <button
                   type="button"
                   className="btn-secondary"
@@ -1035,8 +1050,8 @@ export function InventoryView({
                 <label className="field-label">Amount Incurred ({currencySymbol})</label>
                 <input
                   type="number"
-                  step="0.01"
-                  min="0.01"
+                  step="any"
+                  min="0"
                   className="field-input font-mono"
                   placeholder="0.00"
                   value={expAmount || ''}
@@ -1056,7 +1071,14 @@ export function InventoryView({
                 />
               </div>
 
-              <div className="modal-footer">
+              <div
+                className="modal-footer"
+                style={{
+                  marginTop: '20px',
+                  paddingTop: '16px',
+                  borderTop: '1px solid var(--border-color)',
+                }}
+              >
                 <button
                   type="button"
                   className="btn-secondary"
