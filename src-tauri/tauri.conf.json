@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "3D Printing Price Calculator",
   "version": "1.0.0",
-  "identifier": "com.prusa3d.pricecalculator",
+  "identifier": "com.pricecalculator.desktop",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "3D Printing Price Calculator — Prusa Methodology",
+        "title": "3D Printing Price Calculator",
         "width": 1360,
         "height": 900,
         "minWidth": 980,

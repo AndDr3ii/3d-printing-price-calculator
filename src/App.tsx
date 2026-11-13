@@ -241,12 +241,15 @@ export function App() {
     hours: number;
     minutes: number;
     weight: number;
+    slicer?: string;
+    projectName?: string;
   }) => {
     setState((prev) => ({
       ...prev,
       printHours: data.hours,
       printMinutes: data.minutes,
       ...(data.weight > 0 ? { modelWeight: data.weight } : {}),
+      ...(data.projectName ? { jobName: data.projectName } : {}),
     }));
   };
 
@@ -264,7 +267,7 @@ export function App() {
             <div>
               <h1 className="brand-title">3D Printing Price Calculator</h1>
               <p className="brand-subtitle">
-                Modeled after Prusa Research&apos;s true-cost pricing methodology
+                True-cost 3D printing pricing &amp; margin calculator
               </p>
             </div>
           </div>

@@ -70,40 +70,40 @@ export const FILAMENT_PRESETS: Record<
 
 export const BUILTIN_PRINTER_PRESETS: PrinterProfile[] = [
   {
-    id: 'builtin-mk4s',
-    name: 'Prusa MK4S (Default)',
-    printerWatts: 150,
-    printerPurchasePrice: 800,
+    id: 'builtin-bambu-a1-combo',
+    name: 'Bambu Lab A1 Combo (Default)',
+    printerWatts: 100,
+    printerPurchasePrice: 345,
     investmentReturnYears: 1,
     dailyCommercialUsageHours: 6,
     repairCostPercent: 10,
   },
   {
-    id: 'builtin-core-one',
-    name: 'Prusa CORE One',
-    printerWatts: 180,
-    printerPurchasePrice: 1199,
-    investmentReturnYears: 1,
-    dailyCommercialUsageHours: 8,
-    repairCostPercent: 10,
-  },
-  {
-    id: 'builtin-mini',
-    name: 'Prusa MINI+',
-    printerWatts: 100,
-    printerPurchasePrice: 459,
+    id: 'builtin-bambu-a1-mini',
+    name: 'Bambu Lab A1 Mini',
+    printerWatts: 80,
+    printerPurchasePrice: 200,
     investmentReturnYears: 1,
     dailyCommercialUsageHours: 6,
     repairCostPercent: 8,
   },
   {
-    id: 'builtin-xl',
-    name: 'Prusa XL (Multi-Tool)',
-    printerWatts: 250,
-    printerPurchasePrice: 2499,
-    investmentReturnYears: 2,
+    id: 'builtin-bambu-p1s-combo',
+    name: 'Bambu Lab P1S Combo',
+    printerWatts: 120,
+    printerPurchasePrice: 750,
+    investmentReturnYears: 1,
+    dailyCommercialUsageHours: 8,
+    repairCostPercent: 10,
+  },
+  {
+    id: 'builtin-bambu-x1c-combo',
+    name: 'Bambu Lab X1C Combo',
+    printerWatts: 150,
+    printerPurchasePrice: 1150,
+    investmentReturnYears: 1,
     dailyCommercialUsageHours: 10,
-    repairCostPercent: 12,
+    repairCostPercent: 10,
   },
 ];
 
@@ -125,11 +125,11 @@ export const DEFAULT_STATE: CalculatorState = {
   laborHourlyRate: 20.0,
 
   electricityEnabled: true,
-  printerWatts: 150,
+  printerWatts: 100,
   electricityCostPerKwh: 0.2,
 
   depreciationEnabled: true,
-  printerPurchasePrice: 800.0,
+  printerPurchasePrice: 345.0,
   investmentReturnYears: 1,
   dailyCommercialUsageHours: 6,
   repairCostPercent: 10,
@@ -155,8 +155,8 @@ export const BREAKDOWN_COLORS = {
 } as const;
 
 export const STORAGE_KEYS = {
-  STATE: 'prusa_calc_state_v2',
-  THEME: 'prusa_calc_theme_v1',
-  MATERIAL_PROFILES: 'prusa_calc_material_profiles_v2',
-  PRINTER_PROFILES: 'prusa_calc_printer_profiles_v2',
+  STATE: 'price_calc_state_v3',
+  THEME: 'price_calc_theme_v1',
+  MATERIAL_PROFILES: 'price_calc_material_profiles_v3',
+  PRINTER_PROFILES: 'price_calc_printer_profiles_v3',
 } as const;
