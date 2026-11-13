@@ -1,11 +1,28 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "enables the default permissions",
+  "description": "enables the default permissions and SQLite database access",
   "windows": [
     "main"
   ],
   "permissions": [
-    "core:default"
+    "core:default",
+    "sql:default",
+    {
+      "identifier": "sql:allow-execute",
+      "allow": [
+        {
+          "name": "printops.db"
+        }
+      ]
+    },
+    {
+      "identifier": "sql:allow-select",
+      "allow": [
+        {
+          "name": "printops.db"
+        }
+      ]
+    }
   ]
 }

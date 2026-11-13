@@ -1,4 +1,8 @@
 import {
+  BookmarkCheck,
+  Boxes,
+  Calculator,
+  Check,
   Clock,
   Cpu,
   FileText,
@@ -13,6 +17,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { CollapsibleSection } from './components/CollapsibleSection';
 import { DynamicOtherCosts } from './components/DynamicOtherCosts';
 import { GCodeUpload } from './components/GCodeUpload';
+import { InventoryView } from './components/InventoryView';
+import { LogPrintModal } from './components/LogPrintModal';
 import { NumberField } from './components/NumberField';
 import { PrintInvoice } from './components/PrintInvoice';
 import { ProfileManager } from './components/ProfileManager';
@@ -25,10 +31,17 @@ import {
   FILAMENT_PRESETS,
   STORAGE_KEYS,
 } from './constants/defaults';
+import {
+  DatabaseService,
+  applyWorkshopSettingsToCalculatorState,
+  extractWorkshopSettingsFromCalculatorState,
+} from './services/database';
 import type {
   CalculatorState,
   CurrencyCode,
+  FilamentSpool,
   FilamentType,
+  JobHistoryRecord,
   MaterialProfile,
   PrinterProfile,
 } from './types/calculator';
@@ -100,6 +113,55 @@ export function App() {
   const [activePrinterProfileId, setActivePrinterProfileId] = useState<
     string | undefined
   >(undefined);
+
+  // Database & Inventory State
+  const [activeTab, setActiveTab] = useState<'calculator' | 'inventory'>('calculator');
+  const [isLogModalOpen, setIsLogModalOpen] = useState(false);
+  const [spools, setSpools] = useState<FilamentSpool[]>([]);
+  const [history, setHistory] = useState<JobHistoryRecord[]>([]);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+  };
+
+  useEffect(() => {
+    if (!toastMessage) return;
+    const timer = setTimeout(() => {
+      setToastMessage(null);
+    }, 2800);
+    return () => clearTimeout(timer);
+  }, [toastMessage]);
+
+  useEffect(() => {
+    const db = DatabaseService.getInstance();
+    db.init().then(async () => {
+      try {
+        const [loadedSpools, loadedHistory, dbSettings] = await Promise.all([
+          db.getSpools(),
+          db.getHistory(),
+          db.getSettings(),
+        ]);
+        setSpools(loadedSpools);
+        setHistory(loadedHistory);
+
+        // If no URL serialized state and no local state saved, seed from workshop settings
+        const urlHasState = Boolean(deserializeStateFromUrl());
+        const localHasState = Boolean(localStorage.getItem(STORAGE_KEYS.STATE));
+        if (!urlHasState && !localHasState && dbSettings) {
+          setState((prev) =>
+            applyWorkshopSettingsToCalculatorState(prev, dbSettings)
+          );
+        }
+      } catch (err) {
+        console.warn('Database initialization warning:', err);
+      }
+    });
+  }, []);
+
+  const lowStockCount = useMemo(() => {
+    return spools.filter((s) => (s.remaining_weight_g || 0) < 200).length;
+  }, [spools]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -230,11 +292,67 @@ export function App() {
     }
   };
 
-  const handleReset = () => {
+  const handleSaveWorkshopDefaults = async () => {
+    try {
+      const settings = extractWorkshopSettingsFromCalculatorState(state);
+      await DatabaseService.getInstance().saveSettings(settings);
+      showToast('Workshop defaults saved!');
+    } catch (err) {
+      console.error('Failed to save defaults:', err);
+      showToast('Error saving workshop defaults');
+    }
+  };
+
+  const handleReset = async () => {
     clearUrlState();
-    setState(DEFAULT_STATE);
+    try {
+      const dbSettings = await DatabaseService.getInstance().getSettings();
+      if (dbSettings) {
+        setState(applyWorkshopSettingsToCalculatorState(DEFAULT_STATE, dbSettings));
+      } else {
+        setState(DEFAULT_STATE);
+      }
+    } catch {
+      setState(DEFAULT_STATE);
+    }
     setActiveMaterialProfileId(undefined);
     setActivePrinterProfileId(undefined);
+    showToast('Reset to workshop defaults');
+  };
+
+  const handleSelectInventorySpool = (spoolId: string) => {
+    if (!spoolId) {
+      updateField('selectedSpoolId', undefined);
+      return;
+    }
+    const spool = spools.find((s) => s.id === spoolId);
+    if (!spool) return;
+
+    setActiveMaterialProfileId(undefined);
+    const matchedMaterial: FilamentType =
+      spool.material in FILAMENT_PRESETS
+        ? (spool.material as FilamentType)
+        : spool.material.toLowerCase().includes('petg')
+        ? 'PETG'
+        : spool.material.toLowerCase().includes('pla')
+        ? 'PLA'
+        : spool.material.toLowerCase().includes('abs')
+        ? 'ABS'
+        : spool.material.toLowerCase().includes('tpu')
+        ? 'TPU'
+        : spool.material.toLowerCase().includes('asa')
+        ? 'ASA'
+        : spool.material.toLowerCase().includes('pc')
+        ? 'PC'
+        : 'Custom';
+
+    setState((prev) => ({
+      ...prev,
+      selectedSpoolId: spool.id,
+      spoolPrice: spool.spool_price,
+      spoolWeight: spool.initial_weight_g,
+      filamentType: matchedMaterial,
+    }));
   };
 
   const handleGCodeAutofill = (data: {
@@ -272,7 +390,49 @@ export function App() {
             </div>
           </div>
 
+          {/* Navigation Segmented Tabs */}
+          <nav className="header-nav-tabs" aria-label="Main Navigation">
+            <button
+              type="button"
+              className={`header-nav-tab ${
+                activeTab === 'calculator' ? 'is-active' : ''
+              }`}
+              onClick={() => setActiveTab('calculator')}
+            >
+              <Calculator size={16} />
+              <span>Calculator</span>
+            </button>
+            <button
+              type="button"
+              className={`header-nav-tab ${
+                activeTab === 'inventory' ? 'is-active' : ''
+              }`}
+              onClick={() => setActiveTab('inventory')}
+            >
+              <Boxes size={16} />
+              <span>Inventory &amp; History</span>
+              {lowStockCount > 0 && (
+                <span
+                  className="tab-alert-badge"
+                  title={`${lowStockCount} spool(s) below 200g remaining`}
+                >
+                  {lowStockCount}
+                </span>
+              )}
+            </button>
+          </nav>
+
           <div className="header-controls">
+            <button
+              type="button"
+              className="btn-save-defaults"
+              onClick={handleSaveWorkshopDefaults}
+              title="Save current workshop rates &amp; printer specs as default profile"
+            >
+              <BookmarkCheck size={16} />
+              <span className="save-defaults-text">Save Defaults</span>
+            </button>
+
             <div
               className="currency-segmented"
               role="group"
@@ -309,9 +469,10 @@ export function App() {
         </div>
       </header>
 
-      <main className="dashboard-grid">
-        {/* Left Column: Organized Collapsible Input Sections */}
-        <div className="inputs-column">
+      {activeTab === 'calculator' ? (
+        <main className="dashboard-grid">
+          {/* Left Column: Organized Collapsible Input Sections */}
+          <div className="inputs-column">
           {/* Top Section: Job Name & G-Code File Autofill */}
           <section className="calc-card job-info-card">
             <div className="job-info-header">
@@ -361,6 +522,33 @@ export function App() {
             badgeText={formatCurrency(result.materialCost, state.currency)}
             icon={<Layers size={18} />}
           >
+            {/* Active Inventory Spool Dropdown */}
+            <div className="field-group spool-inventory-selector-group">
+              <div className="field-label-row">
+                <label htmlFor="inventory-spool-select" className="field-label">
+                  Select Inventory Spool
+                </label>
+                {spools.length > 0 && (
+                  <span className="inventory-spools-count-tag">
+                    {spools.length} physical spools in workshop
+                  </span>
+                )}
+              </div>
+              <select
+                id="inventory-spool-select"
+                className="field-select font-mono"
+                value={state.selectedSpoolId || ''}
+                onChange={(e) => handleSelectInventorySpool(e.target.value)}
+              >
+                <option value="">Custom / Unlisted Spool</option>
+                {spools.map((sp) => (
+                  <option key={sp.id} value={sp.id}>
+                    {sp.code} · {sp.brand} {sp.material} {sp.color_name} ({Math.round(sp.remaining_weight_g)}g left — {formatCurrency(sp.spool_price, state.currency)}/spool)
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="field-grid-2">
               <div className="field-group">
                 <div className="field-label-row">
@@ -826,8 +1014,70 @@ export function App() {
           result={result}
           onReset={handleReset}
           onVatChange={(vat) => updateField('vatPercent', vat)}
+          onOpenLogModal={() => setIsLogModalOpen(true)}
         />
       </main>
+      ) : (
+        <main className="inventory-container">
+          <InventoryView
+            spools={spools}
+            history={history}
+            currency={state.currency}
+            onAddSpool={async (newSpool) => {
+              await DatabaseService.getInstance().addSpool(newSpool);
+              const updated = await DatabaseService.getInstance().getSpools();
+              setSpools(updated);
+              showToast(`Added ${newSpool.code} (${newSpool.color_name})`);
+            }}
+            onUpdateSpool={async (updatedSpool) => {
+              await DatabaseService.getInstance().updateSpool(updatedSpool);
+              const updated = await DatabaseService.getInstance().getSpools();
+              setSpools(updated);
+              showToast(`Updated ${updatedSpool.code}`);
+            }}
+            onDeleteSpool={async (id) => {
+              await DatabaseService.getInstance().deleteSpool(id);
+              const updated = await DatabaseService.getInstance().getSpools();
+              setSpools(updated);
+              showToast('Spool deleted');
+            }}
+            onDeleteHistoryItem={async (id) => {
+              await DatabaseService.getInstance().deleteHistoryItem(id);
+              const updated = await DatabaseService.getInstance().getHistory();
+              setHistory(updated);
+              showToast('History record deleted');
+            }}
+          />
+        </main>
+      )}
+
+      {/* Log Print / Sale Modal */}
+      <LogPrintModal
+        isOpen={isLogModalOpen}
+        onClose={() => setIsLogModalOpen(false)}
+        state={state}
+        result={result}
+        spools={spools}
+        onConfirm={async (jobRecord, deductSpoolId, gramsToDeduct) => {
+          await DatabaseService.getInstance().logJob(jobRecord);
+          await DatabaseService.getInstance().deductSpoolWeight(deductSpoolId, gramsToDeduct);
+          const [updatedSpools, updatedHistory] = await Promise.all([
+            DatabaseService.getInstance().getSpools(),
+            DatabaseService.getInstance().getHistory(),
+          ]);
+          setSpools(updatedSpools);
+          setHistory(updatedHistory);
+          showToast(`Logged job & deducted ${gramsToDeduct}g from inventory!`);
+        }}
+      />
+
+      {/* Floating Toast Notification */}
+      {toastMessage && (
+        <div className="toast-notification" role="status" aria-live="polite">
+          <Check size={16} />
+          <span>{toastMessage}</span>
+        </div>
+      )}
     </div>
   );
 }

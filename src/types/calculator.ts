@@ -19,6 +19,9 @@ export interface CalculatorState {
   // Job Info & Metadata
   jobName: string;
 
+  // Selected spool id from inventory (optional)
+  selectedSpoolId?: string;
+
   // Section 1: Filament / Material
   currency: CurrencyCode;
   filamentType: FilamentType;
@@ -68,7 +71,7 @@ export interface BreakdownItem {
   label: string;
   unitAmount: number;
   batchAmount: number;
-  percentage: number; // percentage of Final_Unit_Selling_Price
+  percentage: number;
   color: string;
 }
 
@@ -112,4 +115,59 @@ export interface PrinterProfile {
   investmentReturnYears: number;
   dailyCommercialUsageHours: number;
   repairCostPercent: number;
+}
+
+/* ==========================================================
+   SQLITE INVENTORY & HISTORY DATA TYPES
+   ========================================================== */
+
+export interface WorkshopSettings {
+  id: number;
+  currency: CurrencyCode;
+  electricity_rate: number;
+  labor_rate: number;
+  packaging_cost: number;
+  default_markup: number;
+  failure_buffer: number;
+  selected_printer_id?: string;
+  printer_price: number;
+  printer_power_w: number;
+  daily_usage_hours: number;
+  roi_years: number;
+  repair_pct: number;
+}
+
+export interface FilamentSpool {
+  id: string;
+  code: string;
+  brand: string;
+  material: string;
+  color_name: string;
+  color_hex: string;
+  initial_weight_g: number;
+  remaining_weight_g: number;
+  spool_price: number;
+  created_at?: string;
+}
+
+export type RecordType = 'sale' | 'print_only';
+export type SalesChannel = 'Vinted' | 'Wallapop' | 'Etsy' | 'Direct' | 'Internal' | 'Other';
+
+export interface JobHistoryRecord {
+  id: string;
+  date: string;
+  project_name: string;
+  spool_id: string;
+  spool_code?: string;
+  spool_color_name?: string;
+  spool_color_hex?: string;
+  grams_used: number;
+  print_minutes: number;
+  quantity: number;
+  production_cost: number;
+  selling_price: number;
+  net_profit: number;
+  record_type: RecordType;
+  sales_channel: SalesChannel;
+  notes?: string;
 }

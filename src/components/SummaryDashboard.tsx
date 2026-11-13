@@ -1,6 +1,7 @@
 import {
   Check,
   Copy,
+  PackageCheck,
   Printer as PrintIcon,
   RotateCcw,
   Share2,
@@ -21,6 +22,7 @@ interface SummaryDashboardProps {
   result: CalculationResult;
   onReset: () => void;
   onVatChange: (vat: number) => void;
+  onOpenLogModal?: () => void;
 }
 
 export function SummaryDashboard({
@@ -28,6 +30,7 @@ export function SummaryDashboard({
   result,
   onReset,
   onVatChange,
+  onOpenLogModal,
 }: SummaryDashboardProps) {
   const [copied, setCopied] = useState(false);
   const [shared, setShared] = useState(false);
@@ -261,6 +264,17 @@ export function SummaryDashboard({
 
       {/* Action Buttons: Customer Quote, Print/PDF, Share URL, Reset */}
       <div className="action-button-stack">
+        {onOpenLogModal && (
+          <button
+            type="button"
+            className="btn-log-sale"
+            onClick={onOpenLogModal}
+            title="Log this job to sales history and deduct filament stock from spool"
+          >
+            <PackageCheck size={18} /> Log Print / Sale
+          </button>
+        )}
+
         <div className="action-row-main">
           <button
             type="button"
